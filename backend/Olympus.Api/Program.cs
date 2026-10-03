@@ -3,24 +3,26 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi;
-using Olympus.Api.Data;
 using Microsoft.OpenApi.Models;
+using Olympus.Api.Data;
 using Olympus.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Configuración unificada y permisiva de CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowVercelAndLocal", policy =>
+    options.AddPolicy("AllowAll", policy =>
     {
-        policy.SetIsOriginAllowed(origin => true) // Permite localhost y cualquier dominio de Vercel
+        policy.AllowAnyOrigin()
               .AllowAnyMethod()
-              .AllowAnyHeader()
-              .AllowCredentials();
+              .AllowAnyHeader();
     });
 });
+
 builder.Services.AddControllers().AddJsonOptions(options =>
     options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -54,6 +56,7 @@ builder.Services.AddSwaggerGen(c =>
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is not configured.");
 builder.Services.AddDbContext<OlympusDbContext>(options => options.UseNpgsql(connectionString));
+
 builder.Services.AddScoped<IUsuarioService, UsuarioService>();
 builder.Services.AddScoped<IMembresiaService, MembresiaService>();
 
@@ -87,12 +90,10 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("UserPolicy", policy => policy.RequireRole("User"));
 });
 
-builder.Services.AddCors(options => options.AddPolicy("Frontend", policy =>
-    policy.WithOrigins("http://localhost:4200")
-        .AllowAnyHeader()
-        .AllowAnyMethod()));
-
 var app = builder.Build();
+
+// CORS debe ejecutarse antes de routing y autenticación
+app.UseCors("AllowAll");
 
 if (app.Environment.IsDevelopment())
 {
@@ -101,11 +102,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
-app.UseCors("Frontend");
+app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
-app.UseCors("AllowVercelAndLocal");
+
 app.MapControllers();
 
 await using (var scope = app.Services.CreateAsyncScope())
