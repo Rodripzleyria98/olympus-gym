@@ -1,0 +1,16 @@
+services:
+  olympus-db:
+    image: postgres:16-alpine
+    container_name: olympus-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: olympus_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: olympus_admin_2026
+    ports:
+      - "5432:5432"
+    volumes:
+      - olympus-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  olympus-postgres-data:
