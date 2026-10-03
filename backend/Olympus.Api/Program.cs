@@ -9,7 +9,16 @@ using Microsoft.OpenApi.Models;
 using Olympus.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
-
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowVercelAndLocal", policy =>
+    {
+        policy.SetIsOriginAllowed(origin => true) // Permite localhost y cualquier dominio de Vercel
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials();
+    });
+});
 builder.Services.AddControllers().AddJsonOptions(options =>
     options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
@@ -96,7 +105,7 @@ app.UseHttpsRedirection();
 app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
-
+app.UseCors("AllowVercelAndLocal");
 app.MapControllers();
 
 await using (var scope = app.Services.CreateAsyncScope())
