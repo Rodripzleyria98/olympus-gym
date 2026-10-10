@@ -355,8 +355,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .payment-summary { display: grid; gap: 8px; margin-bottom: 20px; padding: 15px; border: 1px solid rgba(0, 229, 255, .2); background: rgba(0, 229, 255, .045); color: #dceaf0; font-size: 11px; }
 .payment-summary strong { color: #f2fbfd; font: 700 25px var(--display); }
 .payment-summary strong small { color: #96aab5; font: 400 11px var(--body); }
-.transfer-note, .simulation-note { padding: 10px 11px; color: #b9c8d0; border-left: 2px solid var(--accent); background: rgba(0, 229, 255, .06); font-size: 10px; line-height: 1.6; }
-.simulation-note { color: #91a3ad; border-left-color: #506370; background: #080e16; }
+.transfer-details { display: grid; gap: 8px; margin: 0 0 16px; }
+.transfer-details p { display: grid; gap: 4px; margin: 0; padding: 10px 11px; border-left: 2px solid var(--accent); background: rgba(0, 229, 255, .06); }
+.transfer-details span { color: #91a3ad; font-size: 9px; text-transform: uppercase; }
+.transfer-details strong { color: #e4f0f4; font-size: 12px; overflow-wrap: anywhere; }
+.transfer-note { color: #b9c8d0; font-size: 10px; line-height: 1.6; }
 .payment-confirmation { max-width: 580px; margin: 30px auto; padding: 34px; border: 1px solid rgba(0, 229, 255, .3); border-radius: 5px; background: #0d131c; text-align: center; }
 .payment-confirmation-mark { display: grid; place-items: center; width: 45px; height: 45px; margin: 0 auto 17px; border: 1px solid var(--accent); border-radius: 50%; color: var(--accent); font-size: 22px; box-shadow: 0 0 16px rgba(0, 229, 255, .25); }
 .payment-confirmation h2 { margin: 8px 0; color: #f1f8fa; font: 600 25px var(--display); }

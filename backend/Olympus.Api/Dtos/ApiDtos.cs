@@ -131,28 +131,7 @@ public class EditarPlanMembresiaRequestDto
     public decimal Precio { get; set; }
 }
 
-public class PagoCheckoutRequestDto
-{
-    [Range(1, int.MaxValue)]
-    public int PlanMembresiaId { get; set; }
-
-    public Guid? UsuarioId { get; set; }
-
-    [Required, RegularExpression("^(Transferencia|Efectivo)$")]
-    public string MetodoPago { get; set; } = string.Empty;
-}
-
-public record PagoCheckoutResponseDto(
-    Guid PagoId,
-    Guid MembresiaUsuarioId,
-    Guid UsuarioId,
-    string PlanNombre,
-    decimal Monto,
-    string MetodoPago,
-    DateTime FechaPago,
-    DateTime FechaInicio,
-    DateTime FechaFin,
-    string EstadoPago);
+public record DatosTransferenciaDto(string Titular, string Cbu, string Alias);
 
 public class CrearPreferenciaPagoRequestDto
 {

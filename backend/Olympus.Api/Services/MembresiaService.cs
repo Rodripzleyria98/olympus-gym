@@ -36,67 +36,6 @@ public class MembresiaService(OlympusDbContext dbContext) : IMembresiaService
             plan.Id, plan.Nombre, plan.Descripcion, plan.Precio, plan.DuracionDias, plan.ClasesIncluidas);
     }
 
-    public async Task<PagoCheckoutResponseDto?> CreateApprovedCheckoutAsync(
-        Guid usuarioId,
-        int planId,
-        string metodoPago,
-        CancellationToken cancellationToken)
-    {
-        var usuario = await dbContext.Usuarios
-            .FirstOrDefaultAsync(item => item.Id == usuarioId && item.Rol == RolUsuario.User, cancellationToken);
-        var plan = await dbContext.PlanesMembresia
-            .FirstOrDefaultAsync(item => item.Id == planId && item.IsActivo, cancellationToken);
-        if (usuario is null || plan is null)
-        {
-            return null;
-        }
-
-        var ahora = DateTime.UtcNow;
-        var membresiaActivaHasta = await dbContext.MembresiasUsuario
-            .Where(item => item.UsuarioId == usuarioId &&
-                item.Estado == EstadoMembresia.Vigente && item.FechaFin >= ahora)
-            .Select(item => (DateTime?)item.FechaFin)
-            .MaxAsync(cancellationToken);
-        var fechaInicio = membresiaActivaHasta is { } fin && fin > ahora ? fin : ahora;
-        var membresia = new MembresiaUsuario
-        {
-            Id = Guid.NewGuid(),
-            UsuarioId = usuarioId,
-            PlanMembresiaId = plan.Id,
-            FechaInicio = fechaInicio,
-            FechaFin = fechaInicio.AddDays(plan.DuracionDias),
-            Estado = EstadoMembresia.Vigente
-        };
-        var pago = new Pago
-        {
-            Id = Guid.NewGuid(),
-            UsuarioId = usuarioId,
-            MembresiaUsuarioId = membresia.Id,
-            Monto = plan.Precio,
-            FechaCreacion = ahora,
-            FechaAcreditacion = ahora,
-            MetodoPago = metodoPago,
-            PeriodoMeses = Math.Max(1, (int)Math.Round(plan.DuracionDias / 30.0, MidpointRounding.AwayFromZero)),
-            EstadoPago = EstadoPago.Aprobado
-        };
-
-        dbContext.MembresiasUsuario.Add(membresia);
-        dbContext.Pagos.Add(pago);
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        return new PagoCheckoutResponseDto(
-            pago.Id,
-            membresia.Id,
-            usuario.Id,
-            plan.Nombre,
-            pago.Monto,
-            pago.MetodoPago,
-            pago.FechaCreacion,
-            membresia.FechaInicio,
-            membresia.FechaFin,
-            pago.EstadoPago.ToString());
-    }
-
     public async Task<PerfilResponseDto?> GetPerfilAsync(Guid usuarioId, CancellationToken cancellationToken)
     {
         var usuario = await dbContext.Usuarios.AsNoTracking()

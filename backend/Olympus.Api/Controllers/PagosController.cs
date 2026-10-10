@@ -11,11 +11,17 @@ namespace Olympus.Api.Controllers;
 [Route("api/pagos")]
 [Authorize(Roles = "User,Admin")]
 public class PagosController(
-    IMembresiaService membresiaService,
     PagoService pagoService,
     IConfiguration configuration,
     ILogger<PagosController> logger) : ControllerBase
 {
+    [HttpGet("datos-transferencia")]
+    [Authorize(Roles = "User")]
+    public ActionResult<DatosTransferenciaDto> ObtenerDatosTransferencia() => Ok(new DatosTransferenciaDto(
+        configuration["Transferencia:Titular"] ?? string.Empty,
+        configuration["Transferencia:CBU"] ?? string.Empty,
+        configuration["Transferencia:Alias"] ?? string.Empty));
+
     [HttpPost("crear-preferencia")]
     [Authorize(Roles = "User")]
     public async Task<ActionResult<CrearPreferenciaPagoResponseDto>> CrearPreferencia(
@@ -94,34 +100,4 @@ public class PagosController(
         return Ok();
     }
 
-    [HttpPost("checkout")]
-    public async Task<ActionResult<PagoCheckoutResponseDto>> Checkout(
-        PagoCheckoutRequestDto request,
-        CancellationToken cancellationToken)
-    {
-        Guid usuarioId;
-        if (User.IsInRole("Admin"))
-        {
-            if (request.UsuarioId is null)
-            {
-                return BadRequest(new { message = "El administrador debe indicar el socio al que aplicará el pago." });
-            }
-
-            usuarioId = request.UsuarioId.Value;
-        }
-        else
-        {
-            usuarioId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-            if (request.UsuarioId is not null && request.UsuarioId != usuarioId)
-            {
-                return Forbid();
-            }
-        }
-
-        var checkout = await membresiaService.CreateApprovedCheckoutAsync(
-            usuarioId, request.PlanMembresiaId, request.MetodoPago, cancellationToken);
-        return checkout is null
-            ? NotFound(new { message = "No se encontró el socio o la membresía seleccionada." })
-            : Ok(checkout);
-    }
 }

@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -16,23 +15,19 @@ interface PlanMembresia {
   clasesIncluidas: number | null;
 }
 
-interface PagoConfirmado {
-  pagoId: string;
-  membresiaUsuarioId: string;
-  planNombre: string;
-  monto: number;
-  fechaInicio: string;
-  fechaFin: string;
-  estadoPago: string;
-}
-
 interface EstadoSocio {
   isActivo: boolean;
 }
 
+interface DatosTransferencia {
+  titular: string;
+  cbu: string;
+  alias: string;
+}
+
 @Component({
   selector: 'app-membresias',
-  imports: [FormsModule, DatePipe, RouterLink],
+  imports: [FormsModule, RouterLink],
   template: `
     <section class="content-page memberships-page">
       <header class="memberships-heading">
@@ -64,15 +59,6 @@ interface EstadoSocio {
           <p>{{ paymentReturnError() || 'El estado se actualizará cuando Mercado Pago confirme la operación.' }}</p>
           <a class="button button-outline" routerLink="/membresias">Volver a membresías</a>
         </section>
-      } @else if (success(); as payment) {
-        <section class="payment-confirmation" aria-live="polite">
-          <span class="payment-confirmation-mark" aria-hidden="true">✓</span>
-          <span class="eyebrow">PAGO APROBADO</span>
-          <h2>{{ payment.planNombre }}</h2>
-          <p>Tu acceso está activo desde {{ payment.fechaInicio | date:'d MMM y':'UTC' }} hasta {{ payment.fechaFin | date:'d MMM y':'UTC' }}.</p>
-          <div class="confirmation-meta"><span>Importe</span><strong>$ {{ formatPrice(payment.monto) }}</strong></div>
-          <button class="button button-outline" type="button" (click)="success.set(null)">Volver a las membresías</button>
-        </section>
       } @else {
         <div class="membership-grid">
           @for (plan of plans(); track plan.id; let index = $index) {
@@ -86,9 +72,11 @@ interface EstadoSocio {
               <p class="membership-description">{{ plan.descripcion }}</p>
               <div class="membership-card-footer">
                 <span class="membership-duration">{{ plan.duracionDias }} días de acceso</span>
-                <button class="button button-neon" type="button" (click)="openPayment(plan)">
-                  {{ hasActiveMembership() ? 'Renovar Pase' : 'Adquirir Membresía' }}
-                </button>
+                @if (!auth.isAdmin()) {
+                  <button class="button button-neon" type="button" (click)="openPayment(plan)">
+                    {{ hasActiveMembership() ? 'Renovar Pase' : 'Adquirir Membresía' }}
+                  </button>
+                }
                 @if (auth.isAdmin()) {
                   <button class="edit-rate-button" type="button" (click)="openEdit(plan)">Editar Tarifa</button>
                 }
@@ -101,7 +89,7 @@ interface EstadoSocio {
         </div>
       }
 
-      @if (paymentPlan(); as plan) {
+      @if (!auth.isAdmin() && paymentPlan(); as plan) {
         <div class="modal-backdrop" (click)="closePayment()" (keydown.escape)="closePayment()">
           <section class="membership-modal" role="dialog" aria-modal="true" aria-labelledby="payment-modal-title" (click)="$event.stopPropagation()">
             <button class="modal-close" type="button" aria-label="Cerrar" (click)="closePayment()">×</button>
@@ -112,26 +100,28 @@ interface EstadoSocio {
               <strong>$ {{ formatPrice(plan.precio) }} <small>/ mes</small></strong>
               <span>{{ plan.clasesIncluidas === null ? 'Clases ilimitadas' : plan.clasesIncluidas + ' clases incluidas' }}</span>
             </div>
-            @if (auth.isAdmin()) {
-              <label>UUID del socio<input name="usuarioId" [(ngModel)]="adminUserId" placeholder="00000000-0000-0000-0000-000000000000" required /></label>
-            }
             <label>Método de pago
               <select name="metodoPago" [(ngModel)]="metodoPago">
                 <option value="Transferencia">Transferencia bancaria</option>
-                <option value="Efectivo">Efectivo en recepción</option>
+                <option value="MercadoPago">Débito o crédito con Mercado Pago</option>
               </select>
             </label>
             @if (metodoPago === 'Transferencia') {
-              <p class="transfer-note">Solicita los datos bancarios oficiales en recepción. Esta confirmación corresponde al entorno de prueba de Olympus.</p>
+              <div class="transfer-details">
+                @if (transferDetails(); as details) {
+                  @if (details.titular) { <p><span>Titular</span><strong>{{ details.titular }}</strong></p> }
+                  @if (details.cbu) { <p><span>CBU</span><strong>{{ details.cbu }}</strong></p> }
+                  @if (details.alias) { <p><span>Alias</span><strong>{{ details.alias }}</strong></p> }
+                  @if (!details.cbu && !details.alias) { <p class="transfer-note">Los datos de transferencia todavía no están configurados. Contacta al gimnasio.</p> }
+                } @else {
+                  <p class="transfer-note">Cargando datos de transferencia…</p>
+                }
+              </div>
             }
-            <p class="simulation-note">La transferencia o el efectivo se registrarán como pago de prueba. Para pagar en línea, usa Mercado Pago.</p>
             @if (errorMessage()) { <p class="form-error" role="alert">{{ errorMessage() }}</p> }
-            <button class="button button-neon button-full" type="button" [disabled]="saving()" (click)="confirmPayment(plan)">
-              {{ saving() ? 'Procesando…' : 'Registrar pago de prueba' }}
-            </button>
-            @if (!auth.isAdmin()) {
+            @if (metodoPago === 'MercadoPago') {
               <button class="button button-outline button-full" type="button" [disabled]="saving()" (click)="payWithMercadoPago(plan)">
-                Pagar con Mercado Pago
+                {{ saving() ? 'Redirigiendo…' : 'Continuar a Mercado Pago' }}
               </button>
             }
           </section>
@@ -163,7 +153,6 @@ export class MembresiasComponent implements OnInit {
   readonly plans = signal<PlanMembresia[]>([]);
   readonly paymentPlan = signal<PlanMembresia | null>(null);
   readonly editingPlan = signal<PlanMembresia | null>(null);
-  readonly success = signal<PagoConfirmado | null>(null);
   readonly paymentReturn = signal<EstadoPago | null>(null);
   readonly paymentReturnError = signal('');
   readonly isPaymentReturn = signal(false);
@@ -172,8 +161,8 @@ export class MembresiasComponent implements OnInit {
   readonly loading = signal(true);
   readonly saving = signal(false);
   readonly activeMembership = signal(false);
+  readonly transferDetails = signal<DatosTransferencia | null>(null);
   metodoPago = 'Transferencia';
-  adminUserId = '';
   editForm = { nombre: '', descripcion: '', precio: 0 };
 
   ngOnInit(): void {
@@ -198,44 +187,20 @@ export class MembresiasComponent implements OnInit {
   }
 
   openPayment(plan: PlanMembresia): void {
+    if (this.auth.isAdmin()) return;
     this.errorMessage.set('');
     this.metodoPago = 'Transferencia';
-    this.adminUserId = '';
+    this.transferDetails.set(null);
     this.paymentPlan.set(plan);
+    this.http.get<DatosTransferencia>(`${API_BASE_URL}/pagos/datos-transferencia`).subscribe({
+      next: details => this.transferDetails.set(details),
+      error: () => this.errorMessage.set('No se pudieron cargar los datos de transferencia.'),
+    });
   }
 
   closePayment(): void {
     this.paymentPlan.set(null);
     this.errorMessage.set('');
-  }
-
-  confirmPayment(plan: PlanMembresia): void {
-    if (this.saving()) return;
-    if (this.auth.isAdmin() && !this.adminUserId.trim()) {
-      this.errorMessage.set('Indica el UUID del socio para registrar el pago.');
-      return;
-    }
-
-    this.saving.set(true);
-    this.errorMessage.set('');
-    const body: { planMembresiaId: number; metodoPago: string; usuarioId?: string } = {
-      planMembresiaId: plan.id,
-      metodoPago: this.metodoPago,
-    };
-    if (this.auth.isAdmin()) body.usuarioId = this.adminUserId.trim();
-
-    this.http.post<PagoConfirmado>(`${API_BASE_URL}/pagos/checkout`, body).subscribe({
-      next: (payment) => {
-        this.paymentPlan.set(null);
-        this.success.set(payment);
-        if (!this.auth.isAdmin()) this.activeMembership.set(true);
-      },
-      error: (error: HttpErrorResponse) => {
-        this.errorMessage.set(error.error?.message ?? 'No se pudo registrar el pago.');
-        this.saving.set(false);
-      },
-      complete: () => this.saving.set(false),
-    });
   }
 
   payWithMercadoPago(plan: PlanMembresia): void {
