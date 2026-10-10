@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using MercadoPago.Config;
 using Olympus.Api.Data;
 using Olympus.Api.Services;
 
@@ -59,6 +60,10 @@ builder.Services.AddDbContext<OlympusDbContext>(options => options.UseNpgsql(con
 
 builder.Services.AddScoped<IUsuarioService, UsuarioService>();
 builder.Services.AddScoped<IMembresiaService, MembresiaService>();
+builder.Services.AddScoped<PagoService>();
+
+var mercadoPagoAccessToken = builder.Configuration["MercadoPago:AccessToken"];
+MercadoPagoConfig.AccessToken = mercadoPagoAccessToken ?? string.Empty;
 
 var jwtKey = builder.Configuration["Jwt:Key"]
     ?? throw new InvalidOperationException("Jwt:Key is not configured.");

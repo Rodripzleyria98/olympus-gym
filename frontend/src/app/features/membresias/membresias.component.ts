@@ -2,8 +2,10 @@ import { DatePipe } from '@angular/common';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
 import { API_BASE_URL } from '../../core/api.config';
+import { EstadoPago, PagosService } from './pagos.service';
 
 interface PlanMembresia {
   id: number;
@@ -30,7 +32,7 @@ interface EstadoSocio {
 
 @Component({
   selector: 'app-membresias',
-  imports: [FormsModule, DatePipe],
+  imports: [FormsModule, DatePipe, RouterLink],
   template: `
     <section class="content-page memberships-page">
       <header class="memberships-heading">
@@ -40,7 +42,29 @@ interface EstadoSocio {
       </header>
 
       @if (errorMessage()) { <p class="form-error" role="alert">{{ errorMessage() }}</p> }
-      @if (success(); as payment) {
+      @if (paymentReturnError() && !isPaymentReturn()) { <p class="form-error" role="alert">{{ paymentReturnError() }}</p> }
+      @if (paymentReturn(); as payment) {
+        <section class="payment-confirmation" aria-live="polite">
+          <span class="eyebrow">{{ payment.estadoPago === 'Aprobado' ? 'PAGO APROBADO' : payment.estadoPago === 'Pendiente' ? 'PAGO EN PROCESO' : 'PAGO NO COMPLETADO' }}</span>
+          <h2>{{ payment.planNombre }}</h2>
+          <p>{{ payment.estadoPago === 'Aprobado' ? 'El pago fue confirmado y tu membresía está activa.' : payment.estadoPago === 'Pendiente' ? 'Esperando confirmación de Mercado Pago. La membresía se activará al recibirla.' : 'Mercado Pago no confirmó este pago.' }}</p>
+          <div class="confirmation-meta"><span>Importe</span><strong>$ {{ formatPrice(payment.monto) }}</strong></div>
+          @if (payment.estadoPago === 'Pendiente') {
+            <button class="button button-outline" type="button" [disabled]="statusLoading()" (click)="refreshPaymentStatus()">
+              {{ statusLoading() ? 'Consultando…' : 'Actualizar estado' }}
+            </button>
+          }
+          @if (paymentReturnError()) { <p class="form-error" role="alert">{{ paymentReturnError() }}</p> }
+          <a class="button button-outline" routerLink="/membresias">Volver a membresías</a>
+        </section>
+      } @else if (isPaymentReturn()) {
+        <section class="payment-confirmation" aria-live="polite">
+          <span class="eyebrow">ESTADO DEL PAGO</span>
+          <h2>{{ statusLoading() ? 'Consultando pago…' : 'No pudimos confirmar el pago' }}</h2>
+          <p>{{ paymentReturnError() || 'El estado se actualizará cuando Mercado Pago confirme la operación.' }}</p>
+          <a class="button button-outline" routerLink="/membresias">Volver a membresías</a>
+        </section>
+      } @else if (success(); as payment) {
         <section class="payment-confirmation" aria-live="polite">
           <span class="payment-confirmation-mark" aria-hidden="true">✓</span>
           <span class="eyebrow">PAGO APROBADO</span>
@@ -95,17 +119,21 @@ interface EstadoSocio {
               <select name="metodoPago" [(ngModel)]="metodoPago">
                 <option value="Transferencia">Transferencia bancaria</option>
                 <option value="Efectivo">Efectivo en recepción</option>
-                <option value="Tarjeta">Tarjeta</option>
               </select>
             </label>
             @if (metodoPago === 'Transferencia') {
               <p class="transfer-note">Solicita los datos bancarios oficiales en recepción. Esta confirmación corresponde al entorno de prueba de Olympus.</p>
             }
-            <p class="simulation-note">El pago de prueba se registrará como aprobado al confirmar. Los cobros reales requieren validación del medio de pago.</p>
+            <p class="simulation-note">La transferencia o el efectivo se registrarán como pago de prueba. Para pagar en línea, usa Mercado Pago.</p>
             @if (errorMessage()) { <p class="form-error" role="alert">{{ errorMessage() }}</p> }
             <button class="button button-neon button-full" type="button" [disabled]="saving()" (click)="confirmPayment(plan)">
-              {{ saving() ? 'Procesando…' : 'Confirmar Pago' }}
+              {{ saving() ? 'Procesando…' : 'Registrar pago de prueba' }}
             </button>
+            @if (!auth.isAdmin()) {
+              <button class="button button-outline button-full" type="button" [disabled]="saving()" (click)="payWithMercadoPago(plan)">
+                Pagar con Mercado Pago
+              </button>
+            }
           </section>
         </div>
       }
@@ -129,11 +157,17 @@ interface EstadoSocio {
 })
 export class MembresiasComponent implements OnInit {
   private readonly http = inject(HttpClient);
+  private readonly route = inject(ActivatedRoute);
+  private readonly pagosService = inject(PagosService);
   readonly auth = inject(AuthService);
   readonly plans = signal<PlanMembresia[]>([]);
   readonly paymentPlan = signal<PlanMembresia | null>(null);
   readonly editingPlan = signal<PlanMembresia | null>(null);
   readonly success = signal<PagoConfirmado | null>(null);
+  readonly paymentReturn = signal<EstadoPago | null>(null);
+  readonly paymentReturnError = signal('');
+  readonly isPaymentReturn = signal(false);
+  readonly statusLoading = signal(false);
   readonly errorMessage = signal('');
   readonly loading = signal(true);
   readonly saving = signal(false);
@@ -144,6 +178,12 @@ export class MembresiasComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadPlans();
+    this.isPaymentReturn.set(this.route.snapshot.routeConfig?.path?.startsWith('pagos/') ?? false);
+    this.route.queryParamMap.subscribe(params => {
+      const externalReference = params.get('external_reference');
+      if (externalReference) this.checkPaymentStatus(externalReference);
+      else if (this.isPaymentReturn()) this.paymentReturnError.set('No se recibió la referencia del pago.');
+    });
     this.http.get<EstadoSocio>(`${API_BASE_URL}/perfil/mi-estado`).subscribe({
       next: profile => this.activeMembership.set(profile.isActivo),
     });
@@ -195,6 +235,56 @@ export class MembresiasComponent implements OnInit {
         this.saving.set(false);
       },
       complete: () => this.saving.set(false),
+    });
+  }
+
+  payWithMercadoPago(plan: PlanMembresia): void {
+    if (this.saving()) return;
+    this.saving.set(true);
+    this.errorMessage.set('');
+    this.pagosService.iniciarRenovacion(plan.id).subscribe({
+      next: (preference) => {
+        const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+        const checkoutUrl = isLocal
+          ? preference.sandboxInitPoint || preference.initPoint
+          : preference.initPoint;
+        if (!checkoutUrl) {
+          this.errorMessage.set('Mercado Pago no devolvió una URL de pago.');
+          this.saving.set(false);
+          return;
+        }
+        window.location.assign(checkoutUrl);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.errorMessage.set(error.error?.message ?? 'No se pudo iniciar el pago con Mercado Pago.');
+        this.saving.set(false);
+      },
+    });
+  }
+
+  refreshPaymentStatus(): void {
+    const paymentId = this.route.snapshot.queryParamMap.get('external_reference');
+    if (paymentId) this.checkPaymentStatus(paymentId);
+  }
+
+  private checkPaymentStatus(paymentId: string): void {
+    if (!/^[0-9a-f-]{36}$/i.test(paymentId)) {
+      this.paymentReturnError.set('No se pudo identificar el pago que regresó de Mercado Pago.');
+      return;
+    }
+
+    this.statusLoading.set(true);
+    this.paymentReturnError.set('');
+    this.pagosService.obtenerEstado(paymentId).subscribe({
+      next: payment => {
+        this.paymentReturn.set(payment);
+        if (payment.estadoPago === 'Aprobado') this.activeMembership.set(true);
+        this.statusLoading.set(false);
+      },
+      error: () => {
+        this.paymentReturnError.set('No se pudo consultar el pago. Inicia sesión con la cuenta que realizó la compra.');
+        this.statusLoading.set(false);
+      },
     });
   }
 

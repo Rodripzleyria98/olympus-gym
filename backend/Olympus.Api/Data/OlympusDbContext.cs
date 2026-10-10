@@ -58,7 +58,12 @@ public class OlympusDbContext(DbContextOptions<OlympusDbContext> options) : DbCo
             entity.Property(pago => pago.Monto).HasPrecision(10, 2);
             entity.Property(pago => pago.MetodoPago).HasMaxLength(50).IsRequired();
             entity.Property(pago => pago.ComprobanteUrl).HasMaxLength(2048);
+            entity.Property(pago => pago.PreferenciaId).HasMaxLength(100);
+            entity.Property(pago => pago.TransaccionExternaId).HasMaxLength(50);
+            entity.Property(pago => pago.PeriodoMeses).HasDefaultValue(1);
             entity.Property(pago => pago.EstadoPago).HasConversion<string>().HasMaxLength(20);
+            entity.HasIndex(pago => pago.PreferenciaId).IsUnique();
+            entity.HasIndex(pago => pago.TransaccionExternaId).IsUnique();
             entity.HasOne(pago => pago.Usuario)
                 .WithMany(usuario => usuario.Pagos)
                 .HasForeignKey(pago => pago.UsuarioId)

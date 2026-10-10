@@ -12,5 +12,8 @@ export const routes: Routes = [
 	{ path: 'perfil', canActivate: [authGuard], loadComponent: () => import('./features/perfil/perfil.component').then((module) => module.PerfilComponent) },
 	{ path: 'rutina', canActivate: [authGuard], loadComponent: () => import('./features/rutina/mi-rutina.component').then((module) => module.MiRutinaComponent) },
 	{ path: 'membresias', canActivate: [authGuard], loadComponent: () => import('./features/membresias/membresias.component').then((module) => module.MembresiasComponent) },
+	{ path: 'pagos/exito', canActivate: [authGuard], loadComponent: () => import('./features/membresias/membresias.component').then((module) => module.MembresiasComponent) },
+	{ path: 'pagos/fallo', canActivate: [authGuard], loadComponent: () => import('./features/membresias/membresias.component').then((module) => module.MembresiasComponent) },
+	{ path: 'pagos/pendiente', canActivate: [authGuard], loadComponent: () => import('./features/membresias/membresias.component').then((module) => module.MembresiasComponent) },
 	{ path: '**', redirectTo: 'foro' },
 ];

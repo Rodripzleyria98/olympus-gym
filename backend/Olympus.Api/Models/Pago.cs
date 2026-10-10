@@ -4,7 +4,8 @@ public enum EstadoPago
 {
     Aprobado,
     Pendiente,
-    Rechazado
+    Rechazado,
+    Cancelado
 }
 
 public class Pago
@@ -13,9 +14,13 @@ public class Pago
     public Guid UsuarioId { get; set; }
     public Guid MembresiaUsuarioId { get; set; }
     public decimal Monto { get; set; }
-    public DateTime FechaPago { get; set; }
+    public DateTime FechaCreacion { get; set; }
+    public DateTime? FechaAcreditacion { get; set; }
     public required string MetodoPago { get; set; }
     public string? ComprobanteUrl { get; set; }
+    public string? PreferenciaId { get; set; }
+    public string? TransaccionExternaId { get; set; }
+    public int PeriodoMeses { get; set; } = 1;
     public EstadoPago EstadoPago { get; set; } = EstadoPago.Pendiente;
 
     public Usuario Usuario { get; set; } = null!;

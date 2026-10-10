@@ -138,7 +138,7 @@ public class PagoCheckoutRequestDto
 
     public Guid? UsuarioId { get; set; }
 
-    [Required, RegularExpression("^(Transferencia|Efectivo|Tarjeta)$")]
+    [Required, RegularExpression("^(Transferencia|Efectivo)$")]
     public string MetodoPago { get; set; } = string.Empty;
 }
 
@@ -153,6 +153,24 @@ public record PagoCheckoutResponseDto(
     DateTime FechaInicio,
     DateTime FechaFin,
     string EstadoPago);
+
+public class CrearPreferenciaPagoRequestDto
+{
+    [Range(1, int.MaxValue)]
+    public int PlanMembresiaId { get; set; }
+}
+
+public record CrearPreferenciaPagoResponseDto(
+    Guid PagoId,
+    string PreferenceId,
+    string InitPoint,
+    string SandboxInitPoint);
+
+public record EstadoPagoResponseDto(Guid PagoId, string PlanNombre, decimal Monto, string EstadoPago);
+
+public record MercadoPagoWebhookNotificationDto(string? Type, MercadoPagoWebhookDataDto? Data);
+
+public record MercadoPagoWebhookDataDto(string? Id);
 
 public record PerfilResponseDto(
     UsuarioDto Usuario,

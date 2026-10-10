@@ -73,8 +73,10 @@ public class MembresiaService(OlympusDbContext dbContext) : IMembresiaService
             UsuarioId = usuarioId,
             MembresiaUsuarioId = membresia.Id,
             Monto = plan.Precio,
-            FechaPago = ahora,
+            FechaCreacion = ahora,
+            FechaAcreditacion = ahora,
             MetodoPago = metodoPago,
+            PeriodoMeses = Math.Max(1, (int)Math.Round(plan.DuracionDias / 30.0, MidpointRounding.AwayFromZero)),
             EstadoPago = EstadoPago.Aprobado
         };
 
@@ -89,7 +91,7 @@ public class MembresiaService(OlympusDbContext dbContext) : IMembresiaService
             plan.Nombre,
             pago.Monto,
             pago.MetodoPago,
-            pago.FechaPago,
+            pago.FechaCreacion,
             membresia.FechaInicio,
             membresia.FechaFin,
             pago.EstadoPago.ToString());
@@ -118,7 +120,7 @@ public class MembresiaService(OlympusDbContext dbContext) : IMembresiaService
                 item.FechaInicio,
                 item.FechaFin,
                 Plan = item.PlanMembresia.Nombre,
-                Pago = item.Pagos.OrderByDescending(pago => pago.FechaPago)
+                Pago = item.Pagos.OrderByDescending(pago => pago.FechaCreacion)
                     .Select(pago => new { pago.EstadoPago, pago.Monto })
                     .FirstOrDefault()
             })

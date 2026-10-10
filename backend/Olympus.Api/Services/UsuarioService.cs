@@ -100,7 +100,7 @@ public class UsuarioService(OlympusDbContext dbContext) : IUsuarioService
                 item.Pagos.Select(pago => new PagoDto(
                     pago.Id,
                     pago.Monto,
-                    pago.FechaPago,
+                    pago.FechaCreacion,
                     pago.MetodoPago,
                     pago.ComprobanteUrl,
                     pago.EstadoPago.ToString())).ToArray()))
@@ -108,11 +108,11 @@ public class UsuarioService(OlympusDbContext dbContext) : IUsuarioService
 
         var pagos = await dbContext.Pagos.AsNoTracking()
             .Where(pago => pago.UsuarioId == usuarioId)
-            .OrderByDescending(pago => pago.FechaPago)
+            .OrderByDescending(pago => pago.FechaCreacion)
             .Select(pago => new PagoDto(
                 pago.Id,
                 pago.Monto,
-                pago.FechaPago,
+                pago.FechaCreacion,
                 pago.MetodoPago,
                 pago.ComprobanteUrl,
                 pago.EstadoPago.ToString()))
