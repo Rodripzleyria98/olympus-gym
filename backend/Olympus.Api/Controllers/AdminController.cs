@@ -11,11 +11,18 @@ namespace Olympus.Api.Controllers;
 public class AdminController(IUsuarioService usuarioService, IMembresiaService membresiaService) : ControllerBase
 {
     [HttpGet("usuarios")]
-    public async Task<ActionResult<IReadOnlyList<UsuarioAdminDto>>> GetUsuarios(
+    public async Task<ActionResult<PagedResponse<UsuarioAdminDto>>> GetUsuarios(
         [FromQuery] string? buscar,
         [FromQuery] string? estado,
-        CancellationToken cancellationToken) =>
-        Ok(await usuarioService.GetUsuariosAsync(buscar, estado, cancellationToken));
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        CancellationToken cancellationToken = default) =>
+        Ok(await usuarioService.GetUsuariosAsync(
+            buscar,
+            estado,
+            Math.Max(page, 1),
+            Math.Clamp(pageSize, 1, 50),
+            cancellationToken));
 
     [HttpGet("usuarios/{id:guid}/historial")]
     public async Task<ActionResult<HistorialUsuarioDto>> GetHistorial(Guid id, CancellationToken cancellationToken)

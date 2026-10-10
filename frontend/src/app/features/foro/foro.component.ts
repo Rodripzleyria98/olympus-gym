@@ -1,9 +1,12 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { debounceTime, distinctUntilChanged, Subject } from 'rxjs';
 import { API_BASE_URL } from '../../core/api.config';
 import { AuthService } from '../../core/auth.service';
+import { normalizePagedResponse, PagedResponse } from '../../core/paged-response';
 
 interface Publicacion {
   id: number;
@@ -22,6 +25,10 @@ interface Publicacion {
       <div class="page-heading heading-split">
         <div><span class="eyebrow">OLYMPUS · COMUNIDAD</span><h1>Cartelera</h1><p class="lede">Novedades, eventos y avisos del gimnasio.</p></div>
         @if (auth.isAdmin()) { <button class="button button-accent" type="button" (click)="toggleForm()">{{ editingId ? 'Cancelar edición' : '+ Nueva publicación' }}</button> }
+      </div>
+      <div class="toolbar">
+        <label class="search-field"><span aria-hidden="true">⌕</span><input aria-label="Buscar publicaciones" placeholder="Buscar publicaciones" [(ngModel)]="search" (ngModelChange)="onSearchChange($event)" /></label>
+        <span class="result-count">{{ totalCount() }} publicaciones</span>
       </div>
       @if (showForm) {
         <form class="editor-panel" (ngSubmit)="save()">
@@ -45,25 +52,78 @@ interface Publicacion {
           </article>
         }
       </div>
+      @if (totalPages() > 1) {
+        <nav class="pagination" aria-label="Paginación de publicaciones">
+          <button type="button" (click)="goToPage(page() - 1)" [disabled]="page() <= 1">Anterior</button>
+          @for (pageNumber of pageNumbers(); track pageNumber) {
+            <button type="button" [class.current]="pageNumber === page()" [attr.aria-current]="pageNumber === page() ? 'page' : null" (click)="goToPage(pageNumber)">{{ pageNumber }}</button>
+          }
+          <button type="button" (click)="goToPage(page() + 1)" [disabled]="page() >= totalPages()">Siguiente</button>
+        </nav>
+      }
     </section>
   `,
 })
 export class ForoComponent implements OnInit {
   private readonly http = inject(HttpClient);
   readonly auth = inject(AuthService);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly searchChanges = new Subject<string>();
   readonly posts = signal<Publicacion[]>([]);
+  readonly page = signal(1);
+  readonly totalPages = signal(0);
+  readonly totalCount = signal(0);
+  readonly pageSize = 10;
+  search = '';
   showForm = false;
   editingId: number | null = null;
   readonly errorMessage = signal('');
   draft = { titulo: '', contenido: '', imagenUrl: '' };
 
-  ngOnInit(): void { this.load(); }
+  ngOnInit(): void {
+    this.searchChanges.pipe(
+      debounceTime(300),
+      distinctUntilChanged(),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe(() => {
+      this.page.set(1);
+      this.load();
+    });
+    this.load();
+  }
 
   load(): void {
-    this.http.get<Publicacion[]>(`${API_BASE_URL}/foro`).subscribe({
-      next: (posts) => this.posts.set(posts),
+    let params = new HttpParams().set('page', this.page()).set('pageSize', this.pageSize);
+    const search = this.search.trim();
+    if (search) params = params.set('search', search);
+    this.http.get<PagedResponse<Publicacion> | Publicacion[]>(`${API_BASE_URL}/foro`, { params }).subscribe({
+      next: (response) => {
+        const filteredResponse = Array.isArray(response) && search
+          ? response.filter((post) => `${post.titulo} ${post.contenido} ${post.autorNombre}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()))
+          : response;
+        const result = normalizePagedResponse(filteredResponse, this.page(), this.pageSize);
+        this.posts.set(result.items);
+        this.totalCount.set(result.totalCount);
+        this.totalPages.set(result.totalPages);
+      },
       error: () => this.errorMessage.set('No se pudieron cargar las publicaciones.'),
     });
+  }
+
+  onSearchChange(value: string): void {
+    this.searchChanges.next(value.trim());
+  }
+
+  goToPage(page: number): void {
+    if (page < 1 || page > this.totalPages() || page === this.page()) return;
+    this.page.set(page);
+    this.load();
+  }
+
+  pageNumbers(): number[] {
+    const first = Math.max(1, this.page() - 2);
+    const last = Math.min(this.totalPages(), this.page() + 2);
+    return Array.from({ length: last - first + 1 }, (_, index) => first + index);
   }
 
   toggleForm(): void {

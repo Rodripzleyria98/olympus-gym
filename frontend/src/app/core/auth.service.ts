@@ -29,7 +29,27 @@ export class AuthService {
   readonly currentUser = computed(() => this.session()?.usuario ?? null);
   readonly token = computed(() => this.session()?.token ?? null);
   readonly isAuthenticated = computed(() => this.currentUser() !== null);
-  readonly isAdmin = computed(() => this.currentUser()?.rol === 'Admin');
+  readonly isAdmin = computed(() => this.hasRole('Admin'));
+
+  getRol(): string | null {
+    const token = this.token();
+    if (!token) return null;
+
+    try {
+      const payloadSegment = token.split('.')[1];
+      if (!payloadSegment) return null;
+      const base64 = payloadSegment.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='))) as Record<string, unknown>;
+      const role = payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ?? payload['role'];
+      return typeof role === 'string' ? role : Array.isArray(role) && typeof role[0] === 'string' ? role[0] : null;
+    } catch {
+      return null;
+    }
+  }
+
+  hasRole(role: string): boolean {
+    return this.getRol()?.toLowerCase() === role.toLowerCase();
+  }
 
   login(email: string, password: string) {
     return this.http.post<AuthResponse>(`${API_BASE_URL}/auth/login`, { email, password }).pipe(

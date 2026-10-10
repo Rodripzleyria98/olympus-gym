@@ -1,8 +1,11 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, input, OnInit, output, signal } from '@angular/core';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
+import { Component, DestroyRef, inject, input, OnInit, output, signal } from '@angular/core';
 import { FormArray, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { FormsModule } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { debounceTime, distinctUntilChanged, Subject, switchMap } from 'rxjs';
 import { API_BASE_URL } from '../../core/api.config';
+import { normalizePagedResponse, PagedResponse } from '../../core/paged-response';
 
 export interface SocioRutina {
   id: string;
@@ -104,6 +107,8 @@ export class AsignarRutinaModalComponent implements OnInit {
   readonly membersListId = `routine-members-${crypto.randomUUID()}`;
   memberQuery = '';
   private readonly http = inject(HttpClient);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly memberSearchTerms = new Subject<string>();
   private readonly formBuilder = inject(FormBuilder);
   readonly templates = signal<PlantillaRutina[]>([]);
   readonly selectedTemplate = signal('');
@@ -125,20 +130,36 @@ export class AsignarRutinaModalComponent implements OnInit {
     this.selectedMemberId.set(initialMember.id);
     this.selectedMemberName.set(this.fullName(initialMember));
     this.memberQuery = this.fullName(initialMember);
-    this.http.get<Array<{ id: string; nombre: string; apellido: string; email: string }>>(`${API_BASE_URL}/admin/usuarios`).subscribe({
-      next: users => this.members.set(users.map(user => ({
-        id: user.id,
-        nombre: user.nombre,
-        apellido: user.apellido,
-        email: user.email,
-      }))),
+    this.members.set([initialMember]);
+    this.memberSearchTerms.pipe(
+      debounceTime(300),
+      distinctUntilChanged(),
+      switchMap((term) => {
+        let params = new HttpParams().set('page', 1).set('pageSize', 50);
+        if (term) params = params.set('buscar', term);
+        return this.http.get<PagedResponse<SocioRutina> | SocioRutina[]>(`${API_BASE_URL}/admin/usuarios`, { params });
+      }),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe({
+      next: response => {
+        const { items } = normalizePagedResponse(response, 1, 50);
+        this.members.set(items);
+        const query = this.memberQuery.trim().toLocaleLowerCase();
+        const match = items.find(member =>
+          this.fullName(member).toLocaleLowerCase() === query || member.email.toLocaleLowerCase() === query);
+        if (match) {
+          if (match.id !== this.selectedMemberId()) this.resetRoutineForm();
+          this.selectedMemberId.set(match.id);
+          this.selectedMemberName.set(this.fullName(match));
+        }
+      },
       error: () => this.errorMessage.set('No se pudo cargar la lista de socios.'),
     });
     this.http.get<PlantillaRutina[]>(`${API_BASE_URL}/admin/rutinas/plantillas`).subscribe({
       next: templates => this.templates.set(templates),
       error: () => this.errorMessage.set('No se pudieron cargar las plantillas. Puedes crear una rutina personalizada.'),
     });
-    this.loadRoutine(this.socio().id);
+    this.resetRoutineForm();
   }
 
   fullName(member: SocioRutina): string {
@@ -153,12 +174,12 @@ export class AsignarRutinaModalComponent implements OnInit {
     if (!matched) {
       this.selectedMemberId.set('');
       this.selectedMemberName.set('');
-      return;
+    } else {
+      if (matched.id !== this.selectedMemberId()) this.resetRoutineForm();
+      this.selectedMemberId.set(matched.id);
+      this.selectedMemberName.set(this.fullName(matched));
     }
-
-    this.selectedMemberId.set(matched.id);
-    this.selectedMemberName.set(this.fullName(matched));
-    if (matched.id !== this.loadedMemberId) this.loadRoutine(matched.id);
+    this.memberSearchTerms.next(value.trim());
   }
 
   exercisesAt(dayIndex: number): FormArray {
@@ -192,6 +213,8 @@ export class AsignarRutinaModalComponent implements OnInit {
     this.dias.clear();
     if (!template) {
       this.form.patchValue({ titulo: '', fechaInicio: new Date().toISOString().slice(0, 10), fechaRevision: '' });
+      this.addDay();
+      this.addExercise(0);
       return;
     }
 
@@ -253,25 +276,12 @@ export class AsignarRutinaModalComponent implements OnInit {
     });
   }
 
-  private loadedMemberId = '';
-
-  private loadRoutine(memberId: string): void {
-    this.loadedMemberId = memberId;
-    this.errorMessage.set('');
-    this.http.get<{ titulo: string; fechaInicio: string | null; fechaRevision: string | null; dias: DiaPlantilla[] }>(
-      `${API_BASE_URL}/admin/rutinas/usuario/${memberId}`,
-    ).subscribe({
-      next: routine => this.populateForm(routine),
-      error: (error: HttpErrorResponse) => {
-        if (error.status === 404) {
-          this.selectedTemplate.set('');
-          this.form.patchValue({ titulo: '', fechaInicio: new Date().toISOString().slice(0, 10), fechaRevision: '' });
-          this.dias.clear();
-          return;
-        }
-        this.errorMessage.set('No se pudo cargar la rutina actual del socio.');
-      },
-    });
+  private resetRoutineForm(): void {
+    this.selectedTemplate.set('');
+    this.form.patchValue({ titulo: '', fechaInicio: new Date().toISOString().slice(0, 10), fechaRevision: '' });
+    this.dias.clear();
+    this.addDay();
+    this.addExercise(0);
   }
 
   private dateForInput(value: string | null): string | null {
@@ -282,13 +292,4 @@ export class AsignarRutinaModalComponent implements OnInit {
     return value ? `${value}T00:00:00.000Z` : null;
   }
 
-  private populateForm(routine: { titulo: string; fechaInicio: string | null; fechaRevision: string | null; dias: DiaPlantilla[] }): void {
-    this.form.patchValue({
-      titulo: routine.titulo,
-      fechaInicio: this.dateForInput(routine.fechaInicio) ?? new Date().toISOString().slice(0, 10),
-      fechaRevision: this.dateForInput(routine.fechaRevision) ?? '',
-    });
-    this.dias.clear();
-    routine.dias.forEach(day => this.addDay(day));
-  }
 }

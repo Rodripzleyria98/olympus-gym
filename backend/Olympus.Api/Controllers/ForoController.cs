@@ -13,9 +13,32 @@ namespace Olympus.Api.Controllers;
 public class ForoController(OlympusDbContext dbContext) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<PublicacionDto>>> GetAll(CancellationToken cancellationToken) =>
-        Ok(await dbContext.PublicacionesForo.AsNoTracking()
+    [AllowAnonymous]
+    public async Task<ActionResult<PagedResponse<PublicacionDto>>> GetAll(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? search = null,
+        CancellationToken cancellationToken = default)
+    {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 50);
+        var publicaciones = dbContext.PublicacionesForo.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var termino = search.Trim().ToLowerInvariant();
+            publicaciones = publicaciones.Where(publicacion =>
+                publicacion.Titulo.ToLower().Contains(termino) ||
+                publicacion.Contenido.ToLower().Contains(termino) ||
+                (publicacion.Autor.Nombre + " " + publicacion.Autor.Apellido).ToLower().Contains(termino));
+        }
+
+        var totalCount = await publicaciones.CountAsync(cancellationToken);
+        var offset = (int)Math.Min(((long)page - 1) * pageSize, int.MaxValue);
+        var items = await publicaciones
             .OrderByDescending(publicacion => publicacion.FechaPublicacion)
+            .ThenByDescending(publicacion => publicacion.Id)
+            .Skip(offset)
+            .Take(pageSize)
             .Select(publicacion => new PublicacionDto(
                 publicacion.Id,
                 publicacion.Titulo,
@@ -24,7 +47,10 @@ public class ForoController(OlympusDbContext dbContext) : ControllerBase
                 publicacion.FechaPublicacion,
                 publicacion.AutorId,
                 publicacion.Autor.Nombre + " " + publicacion.Autor.Apellido))
-            .ToListAsync(cancellationToken));
+            .ToListAsync(cancellationToken);
+
+        return Ok(PagedResponse<PublicacionDto>.Create(items, page, pageSize, totalCount));
+    }
 
     [HttpPost]
     [Authorize(Roles = "Admin")]

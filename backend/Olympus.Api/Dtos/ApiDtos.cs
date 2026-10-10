@@ -3,6 +3,22 @@ using Olympus.Api.Models;
 
 namespace Olympus.Api.Dtos;
 
+public record PagedResponse<T>(
+    IReadOnlyList<T> Items,
+    int Page,
+    int PageSize,
+    int TotalCount,
+    int TotalPages,
+    bool HasPrevious,
+    bool HasNext)
+{
+    public static PagedResponse<T> Create(IReadOnlyList<T> items, int page, int pageSize, int totalCount)
+    {
+        var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+        return new PagedResponse<T>(items, page, pageSize, totalCount, totalPages, page > 1, page < totalPages);
+    }
+}
+
 public record UsuarioDto(Guid Id, string Nombre, string Apellido, string Email, string Rol);
 
 public record AuthResponseDto(string Token, DateTime ExpiresAt, UsuarioDto Usuario);

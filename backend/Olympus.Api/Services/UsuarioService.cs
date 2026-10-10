@@ -7,9 +7,11 @@ namespace Olympus.Api.Services;
 
 public class UsuarioService(OlympusDbContext dbContext) : IUsuarioService
 {
-    public async Task<IReadOnlyList<UsuarioAdminDto>> GetUsuariosAsync(
+    public async Task<PagedResponse<UsuarioAdminDto>> GetUsuariosAsync(
         string? buscar,
         string? estado,
+        int page,
+        int pageSize,
         CancellationToken cancellationToken)
     {
         var ahora = DateTime.UtcNow;
@@ -23,7 +25,26 @@ public class UsuarioService(OlympusDbContext dbContext) : IUsuarioService
                 usuario.Email.ToLower().Contains(termino));
         }
 
+        if (string.Equals(estado, "activo", StringComparison.OrdinalIgnoreCase))
+        {
+            usuarios = usuarios.Where(usuario => usuario.Membresias.Any(membresia =>
+                membresia.Estado == EstadoMembresia.Vigente &&
+                membresia.FechaFin >= ahora));
+        }
+        else if (string.Equals(estado, "inactivo", StringComparison.OrdinalIgnoreCase))
+        {
+            usuarios = usuarios.Where(usuario => !usuario.Membresias.Any(membresia =>
+                membresia.Estado == EstadoMembresia.Vigente &&
+                membresia.FechaFin >= ahora));
+        }
+
+        var totalCount = await usuarios.CountAsync(cancellationToken);
+        var offset = (int)Math.Min(((long)page - 1) * pageSize, int.MaxValue);
         var resultados = await usuarios
+            .OrderBy(usuario => usuario.Nombre)
+            .ThenBy(usuario => usuario.Apellido)
+            .Skip(offset)
+            .Take(pageSize)
             .Select(usuario => new
             {
                 usuario.Id,
@@ -40,7 +61,7 @@ public class UsuarioService(OlympusDbContext dbContext) : IUsuarioService
             })
             .ToListAsync(cancellationToken);
 
-        var respuesta = resultados.Select(usuario => new UsuarioAdminDto(
+        var items = resultados.Select(usuario => new UsuarioAdminDto(
             usuario.Id,
             usuario.Nombre,
             usuario.Apellido,
@@ -49,18 +70,10 @@ public class UsuarioService(OlympusDbContext dbContext) : IUsuarioService
             usuario.IsActivo,
             usuario.IsActivo,
             usuario.FechaVencimiento,
-            usuario.FechaVencimiento is { } fin ? Math.Max(0, (int)Math.Ceiling((fin - ahora).TotalDays)) : 0));
+            usuario.FechaVencimiento is { } fin ? Math.Max(0, (int)Math.Ceiling((fin - ahora).TotalDays)) : 0))
+            .ToArray();
 
-        if (string.Equals(estado, "activo", StringComparison.OrdinalIgnoreCase))
-        {
-            respuesta = respuesta.Where(usuario => usuario.IsActivo);
-        }
-        else if (string.Equals(estado, "inactivo", StringComparison.OrdinalIgnoreCase))
-        {
-            respuesta = respuesta.Where(usuario => !usuario.IsActivo);
-        }
-
-        return respuesta.OrderBy(usuario => usuario.Nombre).ToArray();
+        return PagedResponse<UsuarioAdminDto>.Create(items, page, pageSize, totalCount);
     }
 
     public async Task<HistorialUsuarioDto?> GetHistorialAsync(Guid usuarioId, CancellationToken cancellationToken)
