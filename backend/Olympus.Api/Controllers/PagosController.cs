@@ -45,6 +45,21 @@ public class PagosController(
             : CreatedAtAction(nameof(ObtenerEstado), new { pagoId = response.PagoId }, response);
     }
 
+    [HttpPost("crear-transferencia")]
+    [Authorize(Roles = "User")]
+    public async Task<ActionResult<EstadoPagoResponseDto>> CrearTransferencia(
+        CrearTransferenciaRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var usuarioId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var response = await pagoService.CrearSolicitudTransferenciaAsync(
+            usuarioId, request.PlanMembresiaId, cancellationToken);
+
+        return response is null
+            ? NotFound(new { message = "No se encontró el socio o la membresía seleccionada." })
+            : CreatedAtAction(nameof(ObtenerEstado), new { pagoId = response.PagoId }, response);
+    }
+
     [HttpGet("{pagoId:guid}")]
     public async Task<ActionResult<EstadoPagoResponseDto>> ObtenerEstado(
         Guid pagoId,

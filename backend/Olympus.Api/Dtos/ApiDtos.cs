@@ -145,6 +145,8 @@ public record CrearPreferenciaPagoResponseDto(
     string InitPoint,
     string SandboxInitPoint);
 
+public record CrearTransferenciaRequestDto(int PlanMembresiaId);
+
 public record EstadoPagoResponseDto(Guid PagoId, string PlanNombre, decimal Monto, string EstadoPago);
 
 public record MercadoPagoWebhookNotificationDto(string? Type, MercadoPagoWebhookDataDto? Data);

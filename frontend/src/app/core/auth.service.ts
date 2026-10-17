@@ -58,7 +58,9 @@ export class AuthService {
   }
 
   register(payload: { nombre: string; apellido: string; email: string; password: string }) {
-    return this.http.post<UsuarioSesion>(`${API_BASE_URL}/auth/register`, payload);
+    return this.http.post<AuthResponse>(`${API_BASE_URL}/auth/register`, payload).pipe(
+      tap((response) => this.saveSession(response)),
+    );
   }
 
   logout(): void {

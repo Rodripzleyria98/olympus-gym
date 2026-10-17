@@ -24,6 +24,10 @@ export class PagosService {
     return this.http.post<PreferenciaPago>(`${API_BASE_URL}/pagos/crear-preferencia`, { planMembresiaId });
   }
 
+  informarTransferencia(planMembresiaId: number) {
+    return this.http.post<EstadoPago>(`${API_BASE_URL}/pagos/crear-transferencia`, { planMembresiaId });
+  }
+
   obtenerEstado(pagoId: string) {
     return this.http.get<EstadoPago>(`${API_BASE_URL}/pagos/${encodeURIComponent(pagoId)}`);
   }

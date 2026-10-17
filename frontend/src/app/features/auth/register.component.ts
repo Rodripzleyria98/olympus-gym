@@ -2,7 +2,6 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule, NgForm } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { switchMap } from 'rxjs';
 import { AuthService } from '../../core/auth.service';
 import { OlympusLogoComponent } from '../../shared/olympus-logo.component';
 
@@ -81,7 +80,6 @@ export class RegisterComponent {
     this.loading.set(true);
     this.errorMessage.set('');
     this.auth.register({ nombre: this.nombre, apellido: this.apellido, email: this.email, password: this.password })
-      .pipe(switchMap(() => this.auth.login(this.email, this.password)))
       .subscribe({
         next: () => void this.router.navigateByUrl('/foro'),
         error: (error: HttpErrorResponse) => {

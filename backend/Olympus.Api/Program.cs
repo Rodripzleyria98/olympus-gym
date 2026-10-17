@@ -56,7 +56,7 @@ builder.Services.AddSwaggerGen(c =>
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is not configured.");
-builder.Services.AddDbContext<OlympusDbContext>(options => options.UseNpgsql(connectionString));
+builder.Services.AddDbContextPool<OlympusDbContext>(options => options.UseNpgsql(connectionString));
 
 builder.Services.AddScoped<IUsuarioService, UsuarioService>();
 builder.Services.AddScoped<IMembresiaService, MembresiaService>();

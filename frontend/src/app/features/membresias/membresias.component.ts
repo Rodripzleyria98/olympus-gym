@@ -36,6 +36,33 @@ interface DatosTransferencia {
         <p class="lede">Elige el pase que mejor se adapta a tu ritmo.</p>
       </header>
 
+      @if (!auth.isAdmin()) {
+        <section class="transfer-account" aria-labelledby="transfer-account-title">
+          <div class="transfer-account-heading">
+            <span class="eyebrow">OPCIÓN DE PAGO</span>
+            <h2 id="transfer-account-title">Transferencia bancaria</h2>
+          </div>
+          @if (transferDetails(); as details) {
+            @if (details.cbu || details.alias) {
+              <div class="transfer-account-values">
+                @if (details.titular) { <p><span>Titular</span><strong>{{ details.titular }}</strong></p> }
+                @if (details.cbu) { <p><span>CBU</span><strong>{{ details.cbu }}</strong></p> }
+                @if (details.alias) { <p><span>Alias</span><strong>{{ details.alias }}</strong></p> }
+              </div>
+            } @else {
+              <p class="transfer-account-note">Los datos de transferencia todavía no están configurados. Contacta al gimnasio.</p>
+            }
+          } @else if (transferDetailsError()) {
+            <div>
+              <p class="transfer-account-note">No se pudieron cargar los datos.</p>
+              <button class="text-button" type="button" (click)="loadTransferDetails()">Reintentar</button>
+            </div>
+          } @else {
+            <p class="transfer-account-note">Cargando datos de transferencia…</p>
+          }
+        </section>
+      }
+
       @if (errorMessage()) { <p class="form-error" role="alert">{{ errorMessage() }}</p> }
       @if (paymentReturnError() && !isPaymentReturn()) { <p class="form-error" role="alert">{{ paymentReturnError() }}</p> }
       @if (paymentReturn(); as payment) {
@@ -107,16 +134,31 @@ interface DatosTransferencia {
               </select>
             </label>
             @if (metodoPago === 'Transferencia') {
-              <div class="transfer-details">
-                @if (transferDetails(); as details) {
-                  @if (details.titular) { <p><span>Titular</span><strong>{{ details.titular }}</strong></p> }
-                  @if (details.cbu) { <p><span>CBU</span><strong>{{ details.cbu }}</strong></p> }
-                  @if (details.alias) { <p><span>Alias</span><strong>{{ details.alias }}</strong></p> }
-                  @if (!details.cbu && !details.alias) { <p class="transfer-note">Los datos de transferencia todavía no están configurados. Contacta al gimnasio.</p> }
-                } @else {
-                  <p class="transfer-note">Cargando datos de transferencia…</p>
-                }
-              </div>
+              @if (transferRequest(); as payment) {
+                <div class="transfer-details" role="status">
+                  <p><strong>Solicitud registrada</strong></p>
+                  <p>El pago de $ {{ formatPrice(payment.monto) }} está pendiente de validación. La membresía se activará cuando el gimnasio confirme la transferencia.</p>
+                </div>
+              } @else {
+                <div class="transfer-details">
+                  @if (transferDetails(); as details) {
+                    @if (details.titular) { <p><span>Titular</span><strong>{{ details.titular }}</strong></p> }
+                    @if (details.cbu) { <p><span>CBU</span><strong>{{ details.cbu }}</strong></p> }
+                    @if (details.alias) { <p><span>Alias</span><strong>{{ details.alias }}</strong></p> }
+                    @if (!details.cbu && !details.alias) { <p class="transfer-note">Los datos de transferencia todavía no están configurados. Contacta al gimnasio.</p> }
+                    @if (details.cbu || details.alias) {
+                      <p class="transfer-note">La membresía se activa después de que el gimnasio valide el pago.</p>
+                      <button class="button button-outline button-full" type="button" [disabled]="saving()" (click)="informTransferencia(plan)">
+                        {{ saving() ? 'Registrando…' : 'Registrar transferencia para validar' }}
+                      </button>
+                    }
+                  } @else if (transferDetailsError()) {
+                    <p class="transfer-note">No se pudieron cargar los datos de transferencia. Intenta nuevamente más tarde.</p>
+                  } @else {
+                    <p class="transfer-note">Cargando datos de transferencia…</p>
+                  }
+                </div>
+              }
             }
             @if (errorMessage()) { <p class="form-error" role="alert">{{ errorMessage() }}</p> }
             @if (metodoPago === 'MercadoPago') {
@@ -154,6 +196,7 @@ export class MembresiasComponent implements OnInit {
   readonly paymentPlan = signal<PlanMembresia | null>(null);
   readonly editingPlan = signal<PlanMembresia | null>(null);
   readonly paymentReturn = signal<EstadoPago | null>(null);
+  readonly transferRequest = signal<EstadoPago | null>(null);
   readonly paymentReturnError = signal('');
   readonly isPaymentReturn = signal(false);
   readonly statusLoading = signal(false);
@@ -162,11 +205,13 @@ export class MembresiasComponent implements OnInit {
   readonly saving = signal(false);
   readonly activeMembership = signal(false);
   readonly transferDetails = signal<DatosTransferencia | null>(null);
+  readonly transferDetailsError = signal(false);
   metodoPago = 'Transferencia';
   editForm = { nombre: '', descripcion: '', precio: 0 };
 
   ngOnInit(): void {
     this.loadPlans();
+    this.loadTransferDetails();
     this.isPaymentReturn.set(this.route.snapshot.routeConfig?.path?.startsWith('pagos/') ?? false);
     this.route.queryParamMap.subscribe(params => {
       const externalReference = params.get('external_reference');
@@ -190,17 +235,28 @@ export class MembresiasComponent implements OnInit {
     if (this.auth.isAdmin()) return;
     this.errorMessage.set('');
     this.metodoPago = 'Transferencia';
-    this.transferDetails.set(null);
+    this.transferRequest.set(null);
     this.paymentPlan.set(plan);
-    this.http.get<DatosTransferencia>(`${API_BASE_URL}/pagos/datos-transferencia`).subscribe({
-      next: details => this.transferDetails.set(details),
-      error: () => this.errorMessage.set('No se pudieron cargar los datos de transferencia.'),
-    });
   }
 
   closePayment(): void {
     this.paymentPlan.set(null);
+    this.transferRequest.set(null);
     this.errorMessage.set('');
+  }
+
+  informTransferencia(plan: PlanMembresia): void {
+    if (this.saving()) return;
+    this.saving.set(true);
+    this.errorMessage.set('');
+    this.pagosService.informarTransferencia(plan.id).subscribe({
+      next: payment => this.transferRequest.set(payment),
+      error: (error: HttpErrorResponse) => {
+        this.errorMessage.set(error.error?.message ?? 'No se pudo registrar la transferencia.');
+        this.saving.set(false);
+      },
+      complete: () => this.saving.set(false),
+    });
   }
 
   payWithMercadoPago(plan: PlanMembresia): void {
@@ -286,6 +342,15 @@ export class MembresiasComponent implements OnInit {
       next: (plans) => this.plans.set(plans),
       error: () => this.errorMessage.set('No se pudieron cargar las membresías.'),
       complete: () => this.loading.set(false),
+    });
+  }
+
+  private loadTransferDetails(): void {
+    this.transferDetails.set(null);
+    this.transferDetailsError.set(false);
+    this.http.get<DatosTransferencia>(`${API_BASE_URL}/pagos/datos-transferencia`).subscribe({
+      next: details => this.transferDetails.set(details),
+      error: () => this.transferDetailsError.set(true),
     });
   }
 }

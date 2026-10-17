@@ -123,6 +123,63 @@ public class PagoService(
         }
     }
 
+    public async Task<EstadoPagoResponseDto?> CrearSolicitudTransferenciaAsync(
+        Guid usuarioId,
+        int planId,
+        CancellationToken cancellationToken)
+    {
+        var usuarioExiste = await dbContext.Usuarios.AsNoTracking()
+            .AnyAsync(item => item.Id == usuarioId && item.Rol == RolUsuario.User, cancellationToken);
+        var plan = await dbContext.PlanesMembresia.AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Id == planId && item.IsActivo, cancellationToken);
+        if (!usuarioExiste || plan is null)
+        {
+            return null;
+        }
+
+        var pagoPendiente = await dbContext.Pagos.AsNoTracking()
+            .Where(item => item.UsuarioId == usuarioId &&
+                item.MetodoPago == "Transferencia" &&
+                item.EstadoPago == EstadoPago.Pendiente &&
+                item.MembresiaUsuario.PlanMembresiaId == planId)
+            .Select(item => new { item.Id, item.Monto, item.EstadoPago })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (pagoPendiente is not null)
+        {
+            return new EstadoPagoResponseDto(
+                pagoPendiente.Id, plan.Nombre, pagoPendiente.Monto, pagoPendiente.EstadoPago.ToString());
+        }
+
+        var ahora = DateTime.UtcNow;
+        var periodoMeses = CalcularPeriodoMeses(plan.DuracionDias);
+        var membresia = new MembresiaUsuario
+        {
+            Id = Guid.NewGuid(),
+            UsuarioId = usuarioId,
+            PlanMembresiaId = plan.Id,
+            FechaInicio = ahora,
+            FechaFin = ahora.AddMonths(periodoMeses),
+            Estado = EstadoMembresia.Pendiente
+        };
+        var pago = new Pago
+        {
+            Id = Guid.NewGuid(),
+            UsuarioId = usuarioId,
+            MembresiaUsuarioId = membresia.Id,
+            Monto = plan.Precio,
+            FechaCreacion = ahora,
+            MetodoPago = "Transferencia",
+            PeriodoMeses = periodoMeses,
+            EstadoPago = EstadoPago.Pendiente
+        };
+
+        dbContext.MembresiasUsuario.Add(membresia);
+        dbContext.Pagos.Add(pago);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return new EstadoPagoResponseDto(pago.Id, plan.Nombre, pago.Monto, pago.EstadoPago.ToString());
+    }
+
     public async Task<EstadoPagoResponseDto?> ObtenerEstadoAsync(
         Guid usuarioId,
         Guid pagoId,

@@ -17,7 +17,7 @@ namespace Olympus.Api.Controllers;
 public class AuthController(OlympusDbContext dbContext, IConfiguration configuration) : ControllerBase
 {
     [HttpPost("register")]
-    public async Task<ActionResult<UsuarioDto>> Register(
+    public async Task<ActionResult<AuthResponseDto>> Register(
         RegisterRequestDto request,
         CancellationToken cancellationToken)
     {
@@ -40,8 +40,7 @@ public class AuthController(OlympusDbContext dbContext, IConfiguration configura
 
         dbContext.Usuarios.Add(usuario);
         await dbContext.SaveChangesAsync(cancellationToken);
-        return StatusCode(StatusCodes.Status201Created, new UsuarioDto(
-            usuario.Id, usuario.Nombre, usuario.Apellido, usuario.Email, usuario.Rol.ToString()));
+        return StatusCode(StatusCodes.Status201Created, CreateAuthResponse(usuario));
     }
 
     [HttpPost("login")]
@@ -50,12 +49,18 @@ public class AuthController(OlympusDbContext dbContext, IConfiguration configura
         CancellationToken cancellationToken)
     {
         var email = request.Email.Trim().ToLowerInvariant();
-        var usuario = await dbContext.Usuarios.FirstOrDefaultAsync(item => item.Email == email, cancellationToken);
+        var usuario = await dbContext.Usuarios.AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Email == email, cancellationToken);
         if (usuario is null || !BCrypt.Net.BCrypt.Verify(request.Password, usuario.PasswordHash))
         {
             return Unauthorized(new { message = "Correo o contraseña incorrectos." });
         }
 
+        return Ok(CreateAuthResponse(usuario));
+    }
+
+    private AuthResponseDto CreateAuthResponse(Usuario usuario)
+    {
         var expiration = DateTime.UtcNow.AddDays(configuration.GetValue("Jwt:ExpireDays", 7));
         var claims = new[]
         {
@@ -73,9 +78,9 @@ public class AuthController(OlympusDbContext dbContext, IConfiguration configura
             expires: expiration,
             signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256));
 
-        return Ok(new AuthResponseDto(
+        return new AuthResponseDto(
             new JwtSecurityTokenHandler().WriteToken(token),
             expiration,
-            new UsuarioDto(usuario.Id, usuario.Nombre, usuario.Apellido, usuario.Email, usuario.Rol.ToString())));
+            new UsuarioDto(usuario.Id, usuario.Nombre, usuario.Apellido, usuario.Email, usuario.Rol.ToString()));
     }
 }
