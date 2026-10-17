@@ -364,6 +364,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .payment-summary strong small { color: #96aab5; font: 400 11px var(--body); }
 .transfer-details { display: grid; gap: 8px; margin: 0 0 16px; }
 .transfer-details p { display: grid; gap: 4px; margin: 0; padding: 10px 11px; border-left: 2px solid var(--accent); background: rgba(0, 229, 255, .06); }
+.transfer-copy-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; gap: 6px; }
+.transfer-copy-field p { min-width: 0; }
+.copy-transfer-button { display: flex; align-items: center; justify-content: center; gap: 5px; align-self: stretch; padding: 0 10px; color: var(--accent); border: 1px solid rgba(0, 229, 255, .35); border-radius: 3px; background: rgba(0, 229, 255, .05); cursor: pointer; font: 600 10px var(--body); white-space: nowrap; }
+.copy-transfer-button:hover { background: rgba(0, 229, 255, .12); }
+.copy-transfer-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.copy-transfer-button svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .transfer-details span { color: #91a3ad; font-size: 9px; text-transform: uppercase; }
 .transfer-details strong { color: #e4f0f4; font-size: 12px; overflow-wrap: anywhere; }
 .transfer-note { color: #b9c8d0; font-size: 10px; line-height: 1.6; }

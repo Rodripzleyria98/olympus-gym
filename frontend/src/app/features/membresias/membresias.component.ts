@@ -116,8 +116,25 @@ interface DatosTransferencia {
                 <div class="transfer-details">
                   @if (transferDetails(); as details) {
                     @if (details.titular) { <p><span>Titular</span><strong>{{ details.titular }}</strong></p> }
-                    @if (details.cbu) { <p><span>CBU</span><strong>{{ details.cbu }}</strong></p> }
-                    @if (details.alias) { <p><span>Alias</span><strong>{{ details.alias }}</strong></p> }
+                    @if (details.cbu) {
+                      <div class="transfer-copy-field">
+                        <p><span>CBU</span><strong>{{ details.cbu }}</strong></p>
+                        <button class="copy-transfer-button" type="button" [attr.aria-label]="copiedTransferField() === 'cbu' ? 'CBU copiado' : 'Copiar CBU'" (click)="copyTransferValue(details.cbu, 'cbu')">
+                          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>
+                          {{ copiedTransferField() === 'cbu' ? 'Copiado' : 'Copiar' }}
+                        </button>
+                      </div>
+                    }
+                    @if (details.alias) {
+                      <div class="transfer-copy-field">
+                        <p><span>Alias</span><strong>{{ details.alias }}</strong></p>
+                        <button class="copy-transfer-button" type="button" [attr.aria-label]="copiedTransferField() === 'alias' ? 'Alias copiado' : 'Copiar alias'" (click)="copyTransferValue(details.alias, 'alias')">
+                          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>
+                          {{ copiedTransferField() === 'alias' ? 'Copiado' : 'Copiar' }}
+                        </button>
+                      </div>
+                    }
+                    @if (copyTransferError()) { <p class="transfer-note" role="alert">{{ copyTransferError() }}</p> }
                     @if (!details.cbu && !details.alias) { <p class="transfer-note">Los datos de transferencia todavía no están configurados. Contacta al gimnasio.</p> }
                     @if (details.cbu || details.alias) {
                       <p class="transfer-note">La membresía se activa después de que el gimnasio valide el pago.</p>
@@ -179,6 +196,8 @@ export class MembresiasComponent implements OnInit {
   readonly activeMembership = signal(false);
   readonly transferDetails = signal<DatosTransferencia | null>(null);
   readonly transferDetailsError = signal(false);
+  readonly copiedTransferField = signal('');
+  readonly copyTransferError = signal('');
   metodoPago = 'Transferencia';
   editForm = { nombre: '', descripcion: '', precio: 0 };
 
@@ -215,7 +234,32 @@ export class MembresiasComponent implements OnInit {
   closePayment(): void {
     this.paymentPlan.set(null);
     this.transferRequest.set(null);
+    this.copiedTransferField.set('');
+    this.copyTransferError.set('');
     this.errorMessage.set('');
+  }
+
+  async copyTransferValue(value: string, field: 'cbu' | 'alias'): Promise<void> {
+    this.copyTransferError.set('');
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+      await navigator.clipboard.writeText(value);
+    } catch {
+      const input = document.createElement('textarea');
+      input.value = value;
+      input.style.position = 'fixed';
+      input.style.opacity = '0';
+      document.body.appendChild(input);
+      input.select();
+      const copied = document.execCommand('copy');
+      input.remove();
+      if (!copied) {
+        this.copiedTransferField.set('');
+        this.copyTransferError.set('No se pudo copiar. Mantén presionado el dato para copiarlo.');
+        return;
+      }
+    }
+    this.copiedTransferField.set(field);
   }
 
   informTransferencia(plan: PlanMembresia): void {
