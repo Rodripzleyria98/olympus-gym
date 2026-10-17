@@ -36,33 +36,6 @@ interface DatosTransferencia {
         <p class="lede">Elige el pase que mejor se adapta a tu ritmo.</p>
       </header>
 
-      @if (!auth.isAdmin()) {
-        <section class="transfer-account" aria-labelledby="transfer-account-title">
-          <div class="transfer-account-heading">
-            <span class="eyebrow">OPCIÓN DE PAGO</span>
-            <h2 id="transfer-account-title">Transferencia bancaria</h2>
-          </div>
-          @if (transferDetails(); as details) {
-            @if (details.cbu || details.alias) {
-              <div class="transfer-account-values">
-                @if (details.titular) { <p><span>Titular</span><strong>{{ details.titular }}</strong></p> }
-                @if (details.cbu) { <p><span>CBU</span><strong>{{ details.cbu }}</strong></p> }
-                @if (details.alias) { <p><span>Alias</span><strong>{{ details.alias }}</strong></p> }
-              </div>
-            } @else {
-              <p class="transfer-account-note">Los datos de transferencia todavía no están configurados. Contacta al gimnasio.</p>
-            }
-          } @else if (transferDetailsError()) {
-            <div>
-              <p class="transfer-account-note">No se pudieron cargar los datos.</p>
-              <button class="text-button" type="button" (click)="loadTransferDetails()">Reintentar</button>
-            </div>
-          } @else {
-            <p class="transfer-account-note">Cargando datos de transferencia…</p>
-          }
-        </section>
-      }
-
       @if (errorMessage()) { <p class="form-error" role="alert">{{ errorMessage() }}</p> }
       @if (paymentReturnError() && !isPaymentReturn()) { <p class="form-error" role="alert">{{ paymentReturnError() }}</p> }
       @if (paymentReturn(); as payment) {
@@ -211,7 +184,6 @@ export class MembresiasComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadPlans();
-    this.loadTransferDetails();
     this.isPaymentReturn.set(this.route.snapshot.routeConfig?.path?.startsWith('pagos/') ?? false);
     this.route.queryParamMap.subscribe(params => {
       const externalReference = params.get('external_reference');
@@ -236,6 +208,7 @@ export class MembresiasComponent implements OnInit {
     this.errorMessage.set('');
     this.metodoPago = 'Transferencia';
     this.transferRequest.set(null);
+    this.loadTransferDetails();
     this.paymentPlan.set(plan);
   }
 
