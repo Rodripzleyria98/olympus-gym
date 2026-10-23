@@ -1,11 +1,12 @@
 import { HttpClient } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
 import { Component, inject, OnInit, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { API_BASE_URL } from '../../core/api.config';
 
 interface Perfil {
-  usuario: { nombre: string; apellido: string; email: string; fechaRegistro?: string };
+  usuario: { nombre: string; apellido: string; email: string; dni: string; fechaRegistro?: string };
   isActivo: boolean;
   estadoMembresia: string;
   plan: string | null;
@@ -18,13 +19,24 @@ interface Perfil {
 
 @Component({
   selector: 'app-perfil',
-  imports: [DatePipe, RouterLink],
+  imports: [DatePipe, RouterLink, FormsModule],
   template: `
     <section class="content-page profile-page">
       @if (profile(); as data) {
         <div class="page-heading"><span class="eyebrow">CUENTA DEL SOCIO</span><h1>Hola, {{ data.usuario.nombre }}.</h1><p class="lede">Tu actividad Olympus, de un vistazo.</p></div>
         <div class="profile-grid">
           <section class="profile-details"><span class="eyebrow">DATOS PERSONALES</span><h2>{{ data.usuario.nombre }} {{ data.usuario.apellido }}</h2><p>{{ data.usuario.email }}</p>
+            @if (editing()) {
+              <form class="editor-panel" (ngSubmit)="saveProfile(data)">
+                <label>Nombre<input name="profileNombre" [(ngModel)]="draft.nombre" maxlength="100" required /></label>
+                <label>Apellido<input name="profileApellido" [(ngModel)]="draft.apellido" maxlength="100" required /></label>
+                <label>DNI<input name="profileDni" [(ngModel)]="draft.dni" pattern="\\d{7,12}" inputmode="numeric" maxlength="12" required /></label>
+                @if (saveError()) { <p class="form-error" role="alert">{{ saveError() }}</p> }
+                <button class="button button-dark" type="submit">Guardar datos</button>
+              </form>
+            } @else {
+              <p>DNI: {{ data.usuario.dni }}</p><button class="text-button" type="button" (click)="startEdit(data)">Editar datos</button>
+            }
             @if (data.fechaInicio) { <div class="detail-line"><span>Socio desde</span><strong>{{ data.fechaInicio | date:'d MMMM y' }}</strong></div> }
           </section>
           <section class="membership-card" [class.membership-inactive]="!data.isActivo">
@@ -46,6 +58,9 @@ export class PerfilComponent implements OnInit {
   private readonly http = inject(HttpClient);
   readonly profile = signal<Perfil | null>(null);
   readonly errorMessage = signal('');
+  readonly editing = signal(false);
+  readonly saveError = signal('');
+  draft = { nombre: '', apellido: '', dni: '' };
 
   ngOnInit(): void { this.load(); }
 
@@ -54,6 +69,22 @@ export class PerfilComponent implements OnInit {
     this.http.get<Perfil>(`${API_BASE_URL}/perfil/mi-estado`).subscribe({
       next: (profile) => this.profile.set(profile),
       error: () => this.errorMessage.set('Intenta cargar el perfil de nuevo.'),
+    });
+  }
+
+  startEdit(profile: Perfil): void {
+    this.draft = { nombre: profile.usuario.nombre, apellido: profile.usuario.apellido, dni: profile.usuario.dni };
+    this.saveError.set('');
+    this.editing.set(true);
+  }
+
+  saveProfile(profile: Perfil): void {
+    this.http.put<void>(`${API_BASE_URL}/perfil`, this.draft).subscribe({
+      next: () => {
+        this.profile.set({ ...profile, usuario: { ...profile.usuario, ...this.draft } });
+        this.editing.set(false);
+      },
+      error: (error: { error?: { message?: string } }) => this.saveError.set(error.error?.message ?? 'No se pudieron guardar tus datos.'),
     });
   }
 }

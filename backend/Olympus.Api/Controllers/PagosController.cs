@@ -2,28 +2,32 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.EntityFrameworkCore;
 using Olympus.Api.Dtos;
+using Olympus.Api.Data;
+using Olympus.Api.Models;
 using Olympus.Api.Services;
 
 namespace Olympus.Api.Controllers;
 
 [ApiController]
 [Route("api/pagos")]
-[Authorize(Roles = "User,Admin")]
+[Authorize(Roles = "User,Socio,Admin,Profesor")]
 public class PagosController(
     PagoService pagoService,
     IConfiguration configuration,
-    ILogger<PagosController> logger) : ControllerBase
+    ILogger<PagosController> logger,
+    OlympusDbContext dbContext) : ControllerBase
 {
     [HttpGet("datos-transferencia")]
-    [Authorize(Roles = "User")]
+    [Authorize(Roles = "User,Socio")]
     public ActionResult<DatosTransferenciaDto> ObtenerDatosTransferencia() => Ok(new DatosTransferenciaDto(
         configuration["Transferencia:Titular"] ?? string.Empty,
         configuration["Transferencia:CBU"] ?? string.Empty,
         configuration["Transferencia:Alias"] ?? string.Empty));
 
     [HttpPost("crear-preferencia")]
-    [Authorize(Roles = "User")]
+    [Authorize(Roles = "User,Socio")]
     public async Task<ActionResult<CrearPreferenciaPagoResponseDto>> CrearPreferencia(
         CrearPreferenciaPagoRequestDto request,
         CancellationToken cancellationToken)
@@ -32,7 +36,7 @@ public class PagosController(
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new
             {
-                message = "Mercado Pago no está configurado con credenciales y URLs válidas para este entorno."
+                message = "Mercado Pago no está configurado"
             });
         }
 
@@ -46,7 +50,7 @@ public class PagosController(
     }
 
     [HttpPost("crear-transferencia")]
-    [Authorize(Roles = "User")]
+    [Authorize(Roles = "User,Socio")]
     public async Task<ActionResult<EstadoPagoResponseDto>> CrearTransferencia(
         CrearTransferenciaRequestDto request,
         CancellationToken cancellationToken)
@@ -58,6 +62,62 @@ public class PagosController(
         return response is null
             ? NotFound(new { message = "No se encontró el socio o la membresía seleccionada." })
             : CreatedAtAction(nameof(ObtenerEstado), new { pagoId = response.PagoId }, response);
+    }
+
+    [HttpPost("efectivo")]
+    [Authorize(Roles = "Admin,Profesor")]
+    public async Task<ActionResult<EstadoPagoResponseDto>> RegistrarCobro(
+        PagoEfectivoRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        if (request.MetodoPago != "Efectivo")
+            return BadRequest(new { message = "Este endpoint solo registra cobros en efectivo." });
+        var usuario = await dbContext.Usuarios.FirstOrDefaultAsync(item =>
+            item.Id == request.UsuarioId &&
+            (item.Rol == RolUsuario.User || item.Rol == RolUsuario.Socio), cancellationToken);
+        var plan = await dbContext.PlanesMembresia.FirstOrDefaultAsync(item =>
+            item.Id == request.PlanMembresiaId && item.IsActivo, cancellationToken);
+        if (usuario is null || plan is null) return NotFound();
+
+        var (fechaTurno, turno) = CajaController.TurnoActual();
+        var caja = await dbContext.CajasTurno.FirstOrDefaultAsync(item =>
+            item.Fecha == fechaTurno && item.Turno == turno && item.Estado == "Abierta", cancellationToken);
+        if (request.MetodoPago == "Efectivo" && caja is null)
+            return Conflict(new { message = "Debe haber una caja abierta para cobrar en efectivo." });
+
+        var ahora = DateTime.UtcNow;
+        var vigenteHasta = await dbContext.MembresiasUsuario
+            .Where(item => item.UsuarioId == usuario.Id && item.Estado == EstadoMembresia.Vigente && item.FechaFin >= ahora)
+            .Select(item => (DateTime?)item.FechaFin)
+            .MaxAsync(cancellationToken);
+        var inicio = vigenteHasta is { } fechaFin && fechaFin > ahora ? fechaFin : ahora;
+        var periodoMeses = Math.Max(1, (int)Math.Round(plan.DuracionDias / 30.0, MidpointRounding.AwayFromZero));
+        var membresia = new MembresiaUsuario
+        {
+            Id = Guid.NewGuid(),
+            UsuarioId = usuario.Id,
+            PlanMembresiaId = plan.Id,
+            FechaInicio = inicio,
+            FechaFin = inicio.AddMonths(periodoMeses),
+            Estado = EstadoMembresia.Vigente
+        };
+        var pago = new Pago
+        {
+            Id = Guid.NewGuid(),
+            UsuarioId = usuario.Id,
+            MembresiaUsuarioId = membresia.Id,
+            CajaTurnoId = caja?.Id,
+            Monto = plan.Precio,
+            FechaCreacion = ahora,
+            FechaAcreditacion = ahora,
+            MetodoPago = request.MetodoPago,
+            PeriodoMeses = periodoMeses,
+            EstadoPago = EstadoPago.Aprobado
+        };
+        dbContext.MembresiasUsuario.Add(membresia);
+        dbContext.Pagos.Add(pago);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Ok(new EstadoPagoResponseDto(pago.Id, plan.Nombre, pago.Monto, pago.EstadoPago.ToString()));
     }
 
     [HttpGet("{pagoId:guid}")]

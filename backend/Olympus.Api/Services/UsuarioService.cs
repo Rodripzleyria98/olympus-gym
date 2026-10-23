@@ -15,14 +15,16 @@ public class UsuarioService(OlympusDbContext dbContext) : IUsuarioService
         CancellationToken cancellationToken)
     {
         var ahora = DateTime.UtcNow;
-        var usuarios = dbContext.Usuarios.AsNoTracking().Where(usuario => usuario.Rol == RolUsuario.User);
+        var usuarios = dbContext.Usuarios.AsNoTracking()
+            .Where(usuario => usuario.Rol == RolUsuario.User || usuario.Rol == RolUsuario.Socio);
 
         if (!string.IsNullOrWhiteSpace(buscar))
         {
             var termino = buscar.Trim().ToLower();
             usuarios = usuarios.Where(usuario =>
                 (usuario.Nombre + " " + usuario.Apellido).ToLower().Contains(termino) ||
-                usuario.Email.ToLower().Contains(termino));
+                usuario.Email.ToLower().Contains(termino) ||
+                usuario.Dni.Contains(termino));
         }
 
         if (string.Equals(estado, "activo", StringComparison.OrdinalIgnoreCase))
@@ -51,6 +53,7 @@ public class UsuarioService(OlympusDbContext dbContext) : IUsuarioService
                 usuario.Nombre,
                 usuario.Apellido,
                 usuario.Email,
+                usuario.Dni,
                 usuario.FechaRegistro,
                 IsActivo = usuario.Membresias.Any(membresia =>
                     membresia.Estado == EstadoMembresia.Vigente && membresia.FechaFin >= ahora),
@@ -66,6 +69,7 @@ public class UsuarioService(OlympusDbContext dbContext) : IUsuarioService
             usuario.Nombre,
             usuario.Apellido,
             usuario.Email,
+            usuario.Dni,
             usuario.FechaRegistro,
             usuario.IsActivo,
             usuario.IsActivo,
@@ -80,7 +84,7 @@ public class UsuarioService(OlympusDbContext dbContext) : IUsuarioService
     {
         var usuario = await dbContext.Usuarios.AsNoTracking()
             .Where(item => item.Id == usuarioId)
-            .Select(item => new UsuarioDto(item.Id, item.Nombre, item.Apellido, item.Email, item.Rol.ToString()))
+            .Select(item => new UsuarioDto(item.Id, item.Nombre, item.Apellido, item.Email, item.Dni, item.Rol.ToString()))
             .FirstOrDefaultAsync(cancellationToken);
 
         if (usuario is null)

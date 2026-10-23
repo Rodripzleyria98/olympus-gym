@@ -13,6 +13,7 @@ public class Pago
     public Guid Id { get; set; }
     public Guid UsuarioId { get; set; }
     public Guid MembresiaUsuarioId { get; set; }
+    public int? CajaTurnoId { get; set; }
     public decimal Monto { get; set; }
     public DateTime FechaCreacion { get; set; }
     public DateTime? FechaAcreditacion { get; set; }
@@ -25,4 +26,5 @@ public class Pago
 
     public Usuario Usuario { get; set; } = null!;
     public MembresiaUsuario MembresiaUsuario { get; set; } = null!;
+    public CajaTurno? CajaTurno { get; set; }
 }

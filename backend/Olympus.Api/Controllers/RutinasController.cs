@@ -22,7 +22,7 @@ public class RutinasController(OlympusDbContext dbContext) : ControllerBase
     }
 
     [HttpGet("admin/rutinas/usuario/{usuarioId:guid}")]
-    [Authorize(Policy = "AdminOnly")]
+    [Authorize(Policy = "StaffPolicy")]
     public async Task<ActionResult<RutinaDto>> GetRutinaUsuario(Guid usuarioId, CancellationToken cancellationToken)
     {
         var rutina = await GetActiveRoutineAsync(usuarioId, cancellationToken);
@@ -30,7 +30,7 @@ public class RutinasController(OlympusDbContext dbContext) : ControllerBase
     }
 
     [HttpGet("admin/rutinas/plantillas")]
-    [Authorize(Policy = "AdminOnly")]
+    [Authorize(Policy = "StaffPolicy")]
     public async Task<ActionResult<IReadOnlyList<PlantillaRutinaDto>>> GetPlantillas(CancellationToken cancellationToken)
     {
         var templateIds = RutinaSeedData.Planes.Select(plan => plan.Id).ToArray();
@@ -103,13 +103,14 @@ public class RutinasController(OlympusDbContext dbContext) : ControllerBase
     }
 
     [HttpPost("admin/rutinas")]
-    [Authorize(Policy = "AdminOnly")]
+    [Authorize(Policy = "StaffPolicy")]
     public async Task<ActionResult<RutinaDto>> CreateOrRenew(
         CrearRutinaRequestDto request,
         CancellationToken cancellationToken)
     {
         var usuario = await dbContext.Usuarios
-            .FirstOrDefaultAsync(item => item.Id == request.UsuarioId && item.Rol == RolUsuario.User, cancellationToken);
+            .FirstOrDefaultAsync(item => item.Id == request.UsuarioId &&
+                (item.Rol == RolUsuario.User || item.Rol == RolUsuario.Socio), cancellationToken);
         if (usuario is null)
         {
             return NotFound(new { message = "No se encontró el socio indicado." });
@@ -130,13 +131,14 @@ public class RutinasController(OlympusDbContext dbContext) : ControllerBase
     }
 
     [HttpPost("admin/rutinas/asignar")]
-    [Authorize(Policy = "AdminOnly")]
+    [Authorize(Policy = "StaffPolicy")]
     public async Task<ActionResult<RutinaDto>> Asignar(
         AsignarRutinaDto request,
         CancellationToken cancellationToken)
     {
         var usuario = await dbContext.Usuarios
-            .FirstOrDefaultAsync(item => item.Id == request.UsuarioId && item.Rol == RolUsuario.User, cancellationToken);
+            .FirstOrDefaultAsync(item => item.Id == request.UsuarioId &&
+                (item.Rol == RolUsuario.User || item.Rol == RolUsuario.Socio), cancellationToken);
         if (usuario is null)
         {
             return NotFound(new { message = "No se encontró el socio indicado." });
@@ -166,7 +168,7 @@ public class RutinasController(OlympusDbContext dbContext) : ControllerBase
     }
 
     [HttpPut("admin/rutinas/{id:guid}")]
-    [Authorize(Policy = "AdminOnly")]
+    [Authorize(Policy = "StaffPolicy")]
     public async Task<ActionResult<RutinaDto>> Update(
         Guid id,
         ActualizarRutinaRequestDto request,

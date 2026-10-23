@@ -1,6 +1,138 @@
 @Olympus.Api_HostAddress = http://localhost:5110
+@token = REPLACE_WITH_JWT
+@socioId = REPLACE_WITH_SOCIO_GUID
+@planId = 1
+@productoId = 1
+@cajaId = 1
 
-GET {{Olympus.Api_HostAddress}}/weatherforecast/
+### List registered users and current roles (admin)
+GET {{Olympus.Api_HostAddress}}/api/admin/usuarios/roles
+Authorization: Bearer {{token}}
+
+### Assign the professor role to a registered account (admin)
+PUT {{Olympus.Api_HostAddress}}/api/admin/usuarios/{{socioId}}/rol
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "rol": "Profesor"
+}
+
+### Access reader: returns the boolean false/true as JSON
+GET {{Olympus.Api_HostAddress}}/api/socios/verificar-acceso/27000001
 Accept: application/json
 
-###
+### Read the created forum post by ID
+GET {{Olympus.Api_HostAddress}}/api/foro/1
+Accept: application/json
+
+### Get a daily pass by ID (admin or professor)
+GET {{Olympus.Api_HostAddress}}/api/pases-diarios/1
+Authorization: Bearer {{token}}
+
+### Open current shift (admin)
+POST {{Olympus.Api_HostAddress}}/api/caja/abrir
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "montoInicial": 50000
+}
+
+### View current shift and live movement summary (admin)
+GET {{Olympus.Api_HostAddress}}/api/caja/actual
+Authorization: Bearer {{token}}
+
+### Close current shift (admin)
+POST {{Olympus.Api_HostAddress}}/api/caja/cerrar
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "montoFinalEfectivoReal": 75000,
+  "observaciones": "Arqueo de cierre"
+}
+
+### Closed shift report (admin)
+GET {{Olympus.Api_HostAddress}}/api/caja/historial?desde=2026-10-01&hasta=2026-10-31
+Authorization: Bearer {{token}}
+
+### Product catalog (admin or professor)
+GET {{Olympus.Api_HostAddress}}/api/productos
+Authorization: Bearer {{token}}
+
+### Create a product (admin)
+POST {{Olympus.Api_HostAddress}}/api/productos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nombre": "Agua",
+  "stockActual": 20,
+  "stockMinimo": 5,
+  "precio": 1500,
+  "codigo": "AGUA-001"
+}
+
+### Adjust stock (admin)
+PUT {{Olympus.Api_HostAddress}}/api/productos/{{productoId}}/stock
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "stockActual": 25
+}
+
+### Sell products (admin or professor; requires an open shift)
+POST {{Olympus.Api_HostAddress}}/api/productos/ventas
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "metodoPago": "Efectivo",
+  "items": [
+    { "productoId": {{productoId}}, "cantidad": 2 }
+  ]
+}
+
+### Register a cash membership payment (admin or professor)
+POST {{Olympus.Api_HostAddress}}/api/pagos/efectivo
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "usuarioId": "{{socioId}}",
+  "planMembresiaId": {{planId}},
+  "metodoPago": "Efectivo"
+}
+
+### Register a daily pass (admin or professor)
+POST {{Olympus.Api_HostAddress}}/api/pases-diarios
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nombreCompleto": "Persona Visitante",
+  "dni": "30123456",
+  "metodoPago": "Efectivo"
+}
+
+### Create a forum post with an optional local image (admin)
+POST {{Olympus.Api_HostAddress}}/api/foro/posts
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=OlympusBoundary
+
+--OlympusBoundary
+Content-Disposition: form-data; name="Titulo"
+
+Aviso del gimnasio
+--OlympusBoundary
+Content-Disposition: form-data; name="Contenido"
+
+Publicación de prueba.
+--OlympusBoundary
+Content-Disposition: form-data; name="Imagen"; filename="aviso.png"
+Content-Type: image/png
+
+< C:\path\to\aviso.png
+--OlympusBoundary--

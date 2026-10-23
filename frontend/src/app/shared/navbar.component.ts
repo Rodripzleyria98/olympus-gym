@@ -17,11 +17,14 @@ import { AuthService } from '../core/auth.service';
           @if (auth.isAdmin()) {
             <a routerLink="/admin" routerLinkActive="active">Socios</a>
             <a routerLink="/membresias" routerLinkActive="active">Membresías y Pagos</a>
+          } @else if (auth.isProfesor()) {
+            <a routerLink="/admin" routerLinkActive="active">Socios</a>
           } @else {
             <a routerLink="/rutina" routerLinkActive="active">Mi Rutina</a>
             <a routerLink="/membresias" routerLinkActive="active">Membresía y Pagos</a>
             <a routerLink="/perfil" routerLinkActive="active">Mi Perfil</a>
           }
+          @if (auth.hasAnyRole(['Admin', 'Profesor'])) { <a routerLink="/operaciones" routerLinkActive="active">Operaciones</a> }
         </nav>
         <div class="account-menu">
           <span class="account-name">{{ user.nombre }}</span>

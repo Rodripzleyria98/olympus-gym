@@ -22,6 +22,10 @@ import { OlympusLogoComponent } from '../../shared/olympus-logo.component';
           <label>Nombre<input name="nombre" [(ngModel)]="nombre" autocomplete="given-name" maxlength="100" required /></label>
           <label>Apellido<input name="apellido" [(ngModel)]="apellido" autocomplete="family-name" maxlength="100" required /></label>
         </div>
+        <label>DNI
+          <input #dniModel="ngModel" name="dni" type="text" [(ngModel)]="dni" inputmode="numeric" autocomplete="off" pattern="\\d{7,12}" maxlength="12" required />
+          @if (dniModel.invalid && (dniModel.dirty || dniModel.touched)) { <span class="auth-field-error">Escribe un DNI de 7 a 12 dígitos, sin puntos.</span> }
+        </label>
         <label>Correo electrónico
           <input #emailModel="ngModel" name="email" type="email" [(ngModel)]="email" autocomplete="email" maxlength="254" email required />
           @if (emailModel.invalid && (emailModel.dirty || emailModel.touched)) { <span class="auth-field-error">Escribe un correo electrónico válido.</span> }
@@ -54,6 +58,7 @@ export class RegisterComponent {
   readonly passwordPattern = '(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9\\s]).{8,100}';
   nombre = '';
   apellido = '';
+  dni = '';
   email = '';
   password = '';
   readonly errorMessage = signal('');
@@ -79,7 +84,7 @@ export class RegisterComponent {
 
     this.loading.set(true);
     this.errorMessage.set('');
-    this.auth.register({ nombre: this.nombre, apellido: this.apellido, email: this.email, password: this.password })
+    this.auth.register({ nombre: this.nombre, apellido: this.apellido, dni: this.dni, email: this.email, password: this.password })
       .subscribe({
         next: () => void this.router.navigateByUrl('/foro'),
         error: (error: HttpErrorResponse) => {

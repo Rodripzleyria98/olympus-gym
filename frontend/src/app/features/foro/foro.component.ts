@@ -35,7 +35,8 @@ interface Publicacion {
           <h2>{{ editingId ? 'Editar publicación' : 'Nueva publicación' }}</h2>
           <label>Título<input name="titulo" [(ngModel)]="draft.titulo" required maxlength="200" /></label>
           <label>Contenido<textarea name="contenido" [(ngModel)]="draft.contenido" required rows="5" maxlength="10000"></textarea></label>
-          <label>URL de imagen<input name="imagenUrl" type="url" [(ngModel)]="draft.imagenUrl" /></label>
+          <label>Imagen (JPG, PNG o WEBP)<input name="imagen" type="file" accept="image/jpeg,image/png,image/webp" (change)="onFileSelected($event)" /></label>
+          @if (imagePreview()) { <img class="news-image" [src]="imagePreview()" alt="Vista previa de la imagen" /> }
           <div class="form-actions"><button class="button button-dark" type="submit">Publicar</button><button class="button button-quiet" type="button" (click)="toggleForm()">Cancelar</button></div>
         </form>
       }
@@ -44,7 +45,7 @@ interface Publicacion {
       <div class="news-grid">
         @for (post of posts(); track post.id) {
           <article class="news-item">
-            @if (post.imagenUrl) { <img class="news-image" [src]="post.imagenUrl" [alt]="post.titulo" /> }
+            @if (post.imagenUrl) { <img class="news-image" [src]="imageSrc(post.imagenUrl)" [alt]="post.titulo" /> }
             <div class="news-body"><div class="news-meta"><span>{{ post.autorNombre }}</span><time>{{ post.fechaPublicacion | date:'d MMM y' }}</time></div>
               <h2>{{ post.titulo }}</h2><p>{{ post.contenido }}</p>
               @if (auth.isAdmin()) { <div class="item-actions"><button class="text-button" type="button" (click)="edit(post)">Editar</button><button class="text-button danger-text" type="button" (click)="remove(post.id)">Eliminar</button></div> }
@@ -78,7 +79,9 @@ export class ForoComponent implements OnInit {
   showForm = false;
   editingId: number | null = null;
   readonly errorMessage = signal('');
-  draft = { titulo: '', contenido: '', imagenUrl: '' };
+  draft = { titulo: '', contenido: '' };
+  private selectedFile: File | null = null;
+  readonly imagePreview = signal<string | null>(null);
 
   ngOnInit(): void {
     this.searchChanges.pipe(
@@ -129,21 +132,56 @@ export class ForoComponent implements OnInit {
   toggleForm(): void {
     this.showForm = !this.showForm;
     this.editingId = null;
-    this.draft = { titulo: '', contenido: '', imagenUrl: '' };
+    this.draft = { titulo: '', contenido: '' };
+    this.selectedFile = null;
+    this.clearImagePreview();
   }
 
   edit(post: Publicacion): void {
     this.editingId = post.id;
-    this.draft = { titulo: post.titulo, contenido: post.contenido, imagenUrl: post.imagenUrl ?? '' };
+    this.draft = { titulo: post.titulo, contenido: post.contenido };
+    this.selectedFile = null;
+    this.clearImagePreview();
+    this.imagePreview.set(post.imagenUrl ? this.imageSrc(post.imagenUrl) : null);
     this.showForm = true;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+      this.errorMessage.set('Selecciona una imagen JPG, PNG o WEBP de hasta 5 MB.');
+      input.value = '';
+      return;
+    }
+    this.errorMessage.set('');
+    this.selectedFile = file;
+    this.clearImagePreview();
+    this.imagePreview.set(URL.createObjectURL(file));
+  }
+
+  private clearImagePreview(): void {
+    const current = this.imagePreview();
+    if (current?.startsWith('blob:')) URL.revokeObjectURL(current);
+    this.imagePreview.set(null);
+  }
+
+  imageSrc(url: string): string {
+    return url.startsWith('/')
+      ? `${API_BASE_URL.replace(/\/api\/?$/, '')}${url}`
+      : url;
+  }
+
   save(): void {
-    const payload = { ...this.draft, imagenUrl: this.draft.imagenUrl || null };
+    const payload = new FormData();
+    payload.append('Titulo', this.draft.titulo);
+    payload.append('Contenido', this.draft.contenido);
+    if (this.selectedFile) payload.append('Imagen', this.selectedFile);
     const request = this.editingId
       ? this.http.put(`${API_BASE_URL}/foro/${this.editingId}`, payload)
-      : this.http.post(`${API_BASE_URL}/foro`, payload);
+      : this.http.post(`${API_BASE_URL}/foro/posts`, payload);
     request.subscribe({
       next: () => { this.toggleForm(); this.load(); },
       error: (error: HttpErrorResponse) => this.errorMessage.set(error.error?.message ?? 'No se pudo guardar la publicación.'),

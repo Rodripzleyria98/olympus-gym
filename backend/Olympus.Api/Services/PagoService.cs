@@ -45,7 +45,7 @@ public class PagoService(
         CancellationToken cancellationToken)
     {
         var usuario = await dbContext.Usuarios.AsNoTracking()
-            .FirstOrDefaultAsync(item => item.Id == usuarioId && item.Rol == RolUsuario.User, cancellationToken);
+            .FirstOrDefaultAsync(item => item.Id == usuarioId && (item.Rol == RolUsuario.User || item.Rol == RolUsuario.Socio), cancellationToken);
         var plan = await dbContext.PlanesMembresia.AsNoTracking()
             .FirstOrDefaultAsync(item => item.Id == planId && item.IsActivo, cancellationToken);
         if (usuario is null || plan is null)
@@ -129,7 +129,7 @@ public class PagoService(
         CancellationToken cancellationToken)
     {
         var usuarioExiste = await dbContext.Usuarios.AsNoTracking()
-            .AnyAsync(item => item.Id == usuarioId && item.Rol == RolUsuario.User, cancellationToken);
+            .AnyAsync(item => item.Id == usuarioId && (item.Rol == RolUsuario.User || item.Rol == RolUsuario.Socio), cancellationToken);
         var plan = await dbContext.PlanesMembresia.AsNoTracking()
             .FirstOrDefaultAsync(item => item.Id == planId && item.IsActivo, cancellationToken);
         if (!usuarioExiste || plan is null)

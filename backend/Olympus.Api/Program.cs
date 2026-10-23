@@ -92,13 +92,15 @@ builder.Services
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
-    options.AddPolicy("UserPolicy", policy => policy.RequireRole("User"));
+    options.AddPolicy("UserPolicy", policy => policy.RequireRole("User", "Socio"));
+    options.AddPolicy("StaffPolicy", policy => policy.RequireRole("Admin", "Profesor"));
 });
 
 var app = builder.Build();
 
 // CORS debe ejecutarse antes de routing y autenticación
 app.UseCors("AllowAll");
+app.UseStaticFiles();
 
 if (app.Environment.IsDevelopment())
 {

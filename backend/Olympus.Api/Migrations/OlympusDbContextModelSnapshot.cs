@@ -22,6 +22,84 @@ namespace Olympus.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Olympus.Api.Models.CajaTurno", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal?>("Diferencia")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("Fecha")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("MontoFinalEfectivoEsperado")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<decimal?>("MontoFinalEfectivoReal")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<decimal>("MontoInicial")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<string>("Observaciones")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("ResponsableTurno")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("character varying(250)");
+
+                    b.Property<string>("ResponsableTurnoNormalizado")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("character varying(250)");
+
+                    b.Property<decimal>("TotalCobrosDigitales")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<decimal>("TotalCobrosEfectivo")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<string>("Turno")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("UsuarioAperturaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("UsuarioCierreId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UsuarioAperturaId");
+
+                    b.HasIndex("UsuarioCierreId");
+
+                    b.HasIndex("Fecha", "Turno")
+                        .IsUnique()
+                        .HasFilter("\"Estado\" = 'Abierta'");
+
+                    b.ToTable("CajasTurno");
+                });
+
             modelBuilder.Entity("Olympus.Api.Models.DiaEntrenamiento", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1925,6 +2003,9 @@ namespace Olympus.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<int?>("CajaTurnoId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("ComprobanteUrl")
                         .HasMaxLength(2048)
                         .HasColumnType("character varying(2048)");
@@ -1970,6 +2051,8 @@ namespace Olympus.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CajaTurnoId");
+
                     b.HasIndex("MembresiaUsuarioId");
 
                     b.HasIndex("PreferenciaId")
@@ -1981,6 +2064,53 @@ namespace Olympus.Api.Migrations
                     b.HasIndex("UsuarioId");
 
                     b.ToTable("Pagos");
+                });
+
+            modelBuilder.Entity("Olympus.Api.Models.PaseDiario", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("CajaTurnoId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Dni")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("Fecha")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MetodoPago")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<decimal>("Monto")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<string>("NombreCompleto")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("RegistradoPorUsuarioId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CajaTurnoId");
+
+                    b.HasIndex("RegistradoPorUsuarioId");
+
+                    b.HasIndex("Dni", "Fecha");
+
+                    b.ToTable("PasesDiarios");
                 });
 
             modelBuilder.Entity("Olympus.Api.Models.PlanEntrenamiento", b =>
@@ -2131,6 +2261,41 @@ namespace Olympus.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Olympus.Api.Models.Producto", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Codigo")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<decimal>("Precio")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<int>("StockActual")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("StockMinimo")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Codigo")
+                        .IsUnique();
+
+                    b.ToTable("Productos");
+                });
+
             modelBuilder.Entity("Olympus.Api.Models.PublicacionForo", b =>
                 {
                     b.Property<int>("Id")
@@ -2177,6 +2342,11 @@ namespace Olympus.Api.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<string>("Dni")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(254)
@@ -2201,6 +2371,9 @@ namespace Olympus.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Dni")
+                        .IsUnique();
+
                     b.HasIndex("Email")
                         .IsUnique();
 
@@ -2211,6 +2384,7 @@ namespace Olympus.Api.Migrations
                         {
                             Id = new Guid("c9e2a6af-c023-4df4-8911-3d56046199a5"),
                             Apellido = "Garay",
+                            Dni = "27000001",
                             Email = "heber.garay@olympus.com",
                             FechaRegistro = new DateTime(2026, 9, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Nombre = "Heber",
@@ -2221,6 +2395,7 @@ namespace Olympus.Api.Migrations
                         {
                             Id = new Guid("eb4a4f6e-fc9b-2ac8-f1ba-d1021d416841"),
                             Apellido = "Acevedo",
+                            Dni = "27000002",
                             Email = "joel.acevedo@olympus.com",
                             FechaRegistro = new DateTime(2026, 9, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Nombre = "Joel",
@@ -2231,6 +2406,7 @@ namespace Olympus.Api.Migrations
                         {
                             Id = new Guid("1b962856-2686-f954-4417-c696f7ef0f6b"),
                             Apellido = "Paez",
+                            Dni = "27000003",
                             Email = "fede.paez@olympus.com",
                             FechaRegistro = new DateTime(2026, 9, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Nombre = "Fede",
@@ -2241,6 +2417,7 @@ namespace Olympus.Api.Migrations
                         {
                             Id = new Guid("7c60eed9-7435-4cdb-92d3-f4c61429b65c"),
                             Apellido = "Socio",
+                            Dni = "27000004",
                             Email = "karen@olympus.com",
                             FechaRegistro = new DateTime(2026, 9, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Nombre = "Karen",
@@ -2251,6 +2428,7 @@ namespace Olympus.Api.Migrations
                         {
                             Id = new Guid("8a619c3f-8bd3-4b5e-9f55-b36f26f573d1"),
                             Apellido = "Socio",
+                            Dni = "27000005",
                             Email = "bianca@olympus.com",
                             FechaRegistro = new DateTime(2026, 9, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Nombre = "Bianca",
@@ -2261,12 +2439,96 @@ namespace Olympus.Api.Migrations
                         {
                             Id = new Guid("cfb0166f-6718-f4db-549b-3f4c87e72df2"),
                             Apellido = "Boneto",
+                            Dni = "27000006",
                             Email = "matias.boneto@olympus.com",
                             FechaRegistro = new DateTime(2026, 9, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Nombre = "Matias",
                             PasswordHash = "$2a$11$kdAkRdmLwFGjXeiBzhlLhu.qDKMnn8S2O.Oi9lHm2w5djynoWNTVC",
                             Rol = "User"
                         });
+                });
+
+            modelBuilder.Entity("Olympus.Api.Models.VentaProducto", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("CajaTurnoId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("Fecha")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MetodoPago")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<decimal>("MontoTotal")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CajaTurnoId");
+
+                    b.HasIndex("UsuarioId");
+
+                    b.ToTable("VentasProducto");
+                });
+
+            modelBuilder.Entity("Olympus.Api.Models.VentaProductoItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Cantidad")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("PrecioUnitario")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<int>("ProductoId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("VentaProductoId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductoId");
+
+                    b.HasIndex("VentaProductoId");
+
+                    b.ToTable("VentaProductoItem");
+                });
+
+            modelBuilder.Entity("Olympus.Api.Models.CajaTurno", b =>
+                {
+                    b.HasOne("Olympus.Api.Models.Usuario", "UsuarioApertura")
+                        .WithMany()
+                        .HasForeignKey("UsuarioAperturaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Olympus.Api.Models.Usuario", "UsuarioCierre")
+                        .WithMany()
+                        .HasForeignKey("UsuarioCierreId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("UsuarioApertura");
+
+                    b.Navigation("UsuarioCierre");
                 });
 
             modelBuilder.Entity("Olympus.Api.Models.DiaEntrenamiento", b =>
@@ -2312,6 +2574,11 @@ namespace Olympus.Api.Migrations
 
             modelBuilder.Entity("Olympus.Api.Models.Pago", b =>
                 {
+                    b.HasOne("Olympus.Api.Models.CajaTurno", "CajaTurno")
+                        .WithMany("Pagos")
+                        .HasForeignKey("CajaTurnoId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Olympus.Api.Models.MembresiaUsuario", "MembresiaUsuario")
                         .WithMany("Pagos")
                         .HasForeignKey("MembresiaUsuarioId")
@@ -2324,9 +2591,29 @@ namespace Olympus.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("CajaTurno");
+
                     b.Navigation("MembresiaUsuario");
 
                     b.Navigation("Usuario");
+                });
+
+            modelBuilder.Entity("Olympus.Api.Models.PaseDiario", b =>
+                {
+                    b.HasOne("Olympus.Api.Models.CajaTurno", "CajaTurno")
+                        .WithMany("PasesDiarios")
+                        .HasForeignKey("CajaTurnoId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Olympus.Api.Models.Usuario", "RegistradoPorUsuario")
+                        .WithMany()
+                        .HasForeignKey("RegistradoPorUsuarioId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CajaTurno");
+
+                    b.Navigation("RegistradoPorUsuario");
                 });
 
             modelBuilder.Entity("Olympus.Api.Models.PlanEntrenamiento", b =>
@@ -2349,6 +2636,52 @@ namespace Olympus.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Autor");
+                });
+
+            modelBuilder.Entity("Olympus.Api.Models.VentaProducto", b =>
+                {
+                    b.HasOne("Olympus.Api.Models.CajaTurno", "CajaTurno")
+                        .WithMany("Ventas")
+                        .HasForeignKey("CajaTurnoId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Olympus.Api.Models.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CajaTurno");
+
+                    b.Navigation("Usuario");
+                });
+
+            modelBuilder.Entity("Olympus.Api.Models.VentaProductoItem", b =>
+                {
+                    b.HasOne("Olympus.Api.Models.Producto", "Producto")
+                        .WithMany()
+                        .HasForeignKey("ProductoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Olympus.Api.Models.VentaProducto", "VentaProducto")
+                        .WithMany("Items")
+                        .HasForeignKey("VentaProductoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Producto");
+
+                    b.Navigation("VentaProducto");
+                });
+
+            modelBuilder.Entity("Olympus.Api.Models.CajaTurno", b =>
+                {
+                    b.Navigation("Pagos");
+
+                    b.Navigation("PasesDiarios");
+
+                    b.Navigation("Ventas");
                 });
 
             modelBuilder.Entity("Olympus.Api.Models.DiaEntrenamiento", b =>
@@ -2380,6 +2713,11 @@ namespace Olympus.Api.Migrations
                     b.Navigation("PlanesEntrenamiento");
 
                     b.Navigation("PublicacionesForo");
+                });
+
+            modelBuilder.Entity("Olympus.Api.Models.VentaProducto", b =>
+                {
+                    b.Navigation("Items");
                 });
 #pragma warning restore 612, 618
         }

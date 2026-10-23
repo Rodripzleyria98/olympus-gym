@@ -1,10 +1,11 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { debounceTime, distinctUntilChanged, Subject } from 'rxjs';
 import { API_BASE_URL } from '../../core/api.config';
+import { AuthService } from '../../core/auth.service';
 import { normalizePagedResponse, PagedResponse } from '../../core/paged-response';
 import { AsignarRutinaModalComponent, SocioRutina } from './asignar-rutina-modal.component';
 
@@ -13,6 +14,7 @@ interface Socio {
   nombre: string;
   apellido: string;
   email: string;
+  dni: string;
   fechaRegistro: string;
   isActivo: boolean;
   estaAlDia: boolean;
@@ -24,14 +26,46 @@ interface Historial {
   membresias: { id: string; plan: string; fechaInicio: string; fechaFin: string; estado: string; pagos: { id: string; monto: number; estadoPago: string; fechaPago: string }[] }[];
 }
 
+interface UsuarioRol {
+  id: string;
+  nombre: string;
+  apellido: string;
+  email: string;
+  dni: string;
+  rol: string;
+}
+
 @Component({
   selector: 'app-admin-dashboard',
   imports: [FormsModule, DatePipe, CurrencyPipe, AsignarRutinaModalComponent],
   template: `
     <section class="content-page" [class.routine-modal-open]="routineSocio() !== null">
       <div class="page-heading"><span class="eyebrow">GESTIÓN · SOCIOS</span><h1>Panel de socios</h1><p class="lede">Estado actual de membresías y pagos.</p></div>
+      @if (auth.isAdmin()) {
+        <section class="history-panel">
+          <div class="heading-split">
+            <div><span class="eyebrow">ADMINISTRACIÓN</span><h2>Usuarios y roles</h2><p class="muted">Asigna permisos de Socio, Profesor o Administrador a las cuentas registradas.</p></div>
+          </div>
+          @if (roleError()) { <p class="form-error" role="alert">{{ roleError() }}</p> }
+          @if (roleNotice()) { <div class="routine-assigned-toast" role="status">{{ roleNotice() }}</div> }
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>Usuario</th><th>DNI</th><th>Rol</th></tr></thead><tbody>
+            @for (account of roleAccounts(); track account.id) {
+              <tr>
+                <td><strong>{{ account.nombre }} {{ account.apellido }}</strong><small>{{ account.email }}</small></td>
+                <td>{{ account.dni }}</td>
+                <td>
+                  <select [name]="'rol-' + account.id" [ngModel]="displayRole(account.rol)" [ngModelOptions]="{ standalone: true }" [disabled]="savingRoleId() === account.id" (ngModelChange)="changeRole(account, $event)" [attr.aria-label]="'Rol de ' + account.nombre + ' ' + account.apellido">
+                    <option value="Socio">Socio</option><option value="Profesor">Profesor</option><option value="Admin">Administrador</option>
+                  </select>
+                </td>
+              </tr>
+            } @empty { <tr><td colspan="3" class="table-empty">No hay cuentas registradas.</td></tr> }
+          </tbody></table></div>
+          <p class="muted">Al cambiar el rol, la persona debe cerrar sesión e ingresar nuevamente para que se apliquen sus permisos.</p>
+        </section>
+      }
       <div class="toolbar">
-        <label class="search-field"><span aria-hidden="true">⌕</span><input aria-label="Buscar socio" placeholder="Buscar por nombre o correo" [(ngModel)]="search" (ngModelChange)="onFiltersChange()" /></label>
+        <label class="search-field"><span aria-hidden="true">⌕</span><input aria-label="Buscar socio" placeholder="Buscar por nombre, correo o DNI" [(ngModel)]="search" (ngModelChange)="onFiltersChange()" /></label>
         <select aria-label="Filtrar por estado" [(ngModel)]="status" (ngModelChange)="onFiltersChange()"><option value="">Todos los estados</option><option value="activo">Activos</option><option value="inactivo">Inactivos</option></select>
         <span class="result-count">{{ socios().length }} de {{ totalCount() }} socios · página {{ page() }} de {{ totalPages() || 1 }}</span>
       </div>
@@ -41,7 +75,7 @@ interface Historial {
         @for (socio of socios(); track socio.id) {
           <tr [class.is-expanded]="expandedSocioId() === socio.id"><td>
             <button class="member-select" type="button" [attr.aria-expanded]="expandedSocioId() === socio.id" (click)="toggleSocioActions(socio.id)">
-              <span><strong>{{ socio.nombre }} {{ socio.apellido }}</strong><small>{{ socio.email }}</small></span>
+              <span><strong>{{ socio.nombre }} {{ socio.apellido }}</strong><small>{{ socio.email }} · DNI {{ socio.dni }}</small></span>
               <span class="member-expand-indicator" aria-hidden="true">{{ expandedSocioId() === socio.id ? '−' : '+' }}</span>
             </button>
             @if (expandedSocioId() === socio.id) {
@@ -51,7 +85,7 @@ interface Historial {
                   <div><span>Vencimiento</span><strong>{{ socio.fechaVencimiento ? (socio.fechaVencimiento | date:'d MMM y') : 'Sin membresía' }}</strong></div>
                   <div><span>Días restantes</span><strong>{{ socio.isActivo ? socio.diasRestantes : '—' }}</strong></div>
                 </div>
-                <div class="admin-member-actions"><button class="text-button" type="button" (click)="view(socio)">Ver historial</button><button class="routine-action-button" type="button" (click)="openRoutine(socio)"><span class="dumbbell-icon" aria-hidden="true"><i></i></span>Asignar / Gestionar Rutina</button></div>
+                <div class="admin-member-actions"><button class="text-button" type="button" (click)="view(socio)">Ver historial</button>@if (auth.isAdmin()) { <button class="text-button" type="button" (click)="editProfile(socio)">Editar datos</button> }<button class="routine-action-button" type="button" (click)="openRoutine(socio)"><span class="dumbbell-icon" aria-hidden="true"><i></i></span>Asignar / Gestionar Rutina</button></div>
               </div>
             }
           </td>
@@ -73,12 +107,22 @@ interface Historial {
       @if (selected(); as member) {
         <section class="history-panel">
           <div class="heading-split"><div><span class="eyebrow">DETALLE DEL SOCIO</span><h2>{{ member.nombre }} {{ member.apellido }}</h2></div><button class="icon-button" type="button" aria-label="Cerrar historial" (click)="selected.set(null)">×</button></div>
+          @if (editingProfile()) {
+            <form class="editor-panel" (ngSubmit)="saveProfile(member)">
+              <h3>Actualizar datos del socio</h3>
+              <label>Nombre<input name="editNombre" [(ngModel)]="profileDraft.nombre" required maxlength="100" /></label>
+              <label>Apellido<input name="editApellido" [(ngModel)]="profileDraft.apellido" required maxlength="100" /></label>
+              <label>DNI<input name="editDni" [(ngModel)]="profileDraft.dni" required pattern="\\d{7,12}" inputmode="numeric" maxlength="12" /></label>
+              @if (profileError()) { <p class="form-error" role="alert">{{ profileError() }}</p> }
+              <button class="button button-dark" type="submit">Guardar datos</button>
+            </form>
+          }
           @if (history()?.membresias?.length) {
             @for (membership of history()?.membresias; track membership.id) {
               <div class="history-row"><div><strong>{{ membership.plan }}</strong><small>{{ membership.fechaInicio | date:'d MMM y' }} – {{ membership.fechaFin | date:'d MMM y' }}</small></div><span class="status-badge" [class.status-active]="membership.estado === 'Vigente'" [class.status-inactive]="membership.estado !== 'Vigente'">{{ membership.estado }}</span>
                 @for (payment of membership.pagos; track payment.id) {
                   <div class="payment-row"><span>Pago {{ payment.fechaPago | date:'d MMM y' }}</span><strong>{{ payment.monto | currency:'MXN':'symbol':'1.0-0' }}</strong><span>{{ payment.estadoPago }}</span>
-                    @if (payment.estadoPago === 'Pendiente') { <button class="text-button" type="button" (click)="approve(payment.id)">Validar pago</button> }
+                    @if (auth.isAdmin() && payment.estadoPago === 'Pendiente') { <button class="text-button" type="button" (click)="approve(payment.id)">Validar pago</button> }
                   </div>
                 }
               </div>
@@ -94,6 +138,7 @@ interface Historial {
 })
 export class AdminDashboardComponent implements OnInit {
   private readonly http = inject(HttpClient);
+  readonly auth = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly filterChanges = new Subject<string>();
   readonly socios = signal<Socio[]>([]);
@@ -107,6 +152,13 @@ export class AdminDashboardComponent implements OnInit {
   readonly routineSocio = signal<SocioRutina | null>(null);
   readonly expandedSocioId = signal<string | null>(null);
   readonly routineNotice = signal('');
+  readonly editingProfile = signal(false);
+  readonly profileError = signal('');
+  readonly roleAccounts = signal<UsuarioRol[]>([]);
+  readonly roleError = signal('');
+  readonly roleNotice = signal('');
+  readonly savingRoleId = signal<string | null>(null);
+  profileDraft = { nombre: '', apellido: '', dni: '' };
   search = '';
   status = '';
   private noticeTimer?: ReturnType<typeof setTimeout>;
@@ -118,6 +170,40 @@ export class AdminDashboardComponent implements OnInit {
       takeUntilDestroyed(this.destroyRef),
     ).subscribe(() => this.load());
     this.load();
+    if (this.auth.isAdmin()) this.loadRoleAccounts();
+  }
+
+  loadRoleAccounts(): void {
+    this.roleError.set('');
+    this.http.get<UsuarioRol[]>(`${API_BASE_URL}/admin/usuarios/roles`).subscribe({
+      next: accounts => this.roleAccounts.set(accounts),
+      error: (error: HttpErrorResponse) => this.roleError.set(error.error?.message ?? 'No se pudieron cargar los usuarios y roles.'),
+    });
+  }
+
+  displayRole(role: string): string {
+    return role === 'User' ? 'Socio' : role;
+  }
+
+  changeRole(account: UsuarioRol, role: string): void {
+    const previousRole = account.rol;
+    if (role === this.displayRole(previousRole)) return;
+    this.savingRoleId.set(account.id);
+    this.roleError.set('');
+    this.roleNotice.set('');
+    this.http.put<void>(`${API_BASE_URL}/admin/usuarios/${account.id}/rol`, { rol: role }).subscribe({
+      next: () => {
+        this.roleAccounts.update(accounts => accounts.map(item =>
+          item.id === account.id ? { ...item, rol: role } : item));
+        this.roleNotice.set(`Rol de ${account.nombre} ${account.apellido} actualizado a ${this.displayRole(role)}.`);
+        this.savingRoleId.set(null);
+        this.load();
+      },
+      error: (error: HttpErrorResponse) => {
+        this.roleError.set(error.error?.message ?? 'No se pudo actualizar el rol.');
+        this.savingRoleId.set(null);
+      },
+    });
   }
 
   load(): void {
@@ -164,9 +250,29 @@ export class AdminDashboardComponent implements OnInit {
   }
 
   view(socio: Socio): void {
+    this.editingProfile.set(false);
     this.selected.set(socio);
     this.history.set(null);
     this.http.get<Historial>(`${API_BASE_URL}/admin/usuarios/${socio.id}/historial`).subscribe({ next: (history) => this.history.set(history) });
+  }
+
+  editProfile(socio: Socio): void {
+    this.selected.set(socio);
+    this.editingProfile.set(true);
+    this.profileDraft = { nombre: socio.nombre, apellido: socio.apellido, dni: socio.dni };
+    this.profileError.set('');
+  }
+
+  saveProfile(socio: Socio): void {
+    this.http.put(`${API_BASE_URL}/admin/usuarios/${socio.id}/perfil`, this.profileDraft).subscribe({
+      next: () => {
+        const updated = { ...socio, ...this.profileDraft };
+        this.socios.update(items => items.map(item => item.id === socio.id ? updated : item));
+        this.selected.set(updated);
+        this.editingProfile.set(false);
+      },
+      error: (error: HttpErrorResponse) => this.profileError.set(error.error?.message ?? 'No se pudieron actualizar los datos.'),
+    });
   }
 
   openRoutine(socio: Socio): void {

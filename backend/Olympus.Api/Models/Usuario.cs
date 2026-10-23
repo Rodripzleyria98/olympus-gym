@@ -3,6 +3,8 @@ namespace Olympus.Api.Models;
 public enum RolUsuario
 {
     Admin,
+    Profesor,
+    Socio,
     User
 }
 
@@ -11,9 +13,10 @@ public class Usuario
     public Guid Id { get; set; }
     public required string Nombre { get; set; }
     public required string Apellido { get; set; }
+    public required string Dni { get; set; }
     public required string Email { get; set; }
     public required string PasswordHash { get; set; }
-    public RolUsuario Rol { get; set; } = RolUsuario.User;
+    public RolUsuario Rol { get; set; } = RolUsuario.Socio;
     public DateTime FechaRegistro { get; set; }
 
     public ICollection<MembresiaUsuario> Membresias { get; set; } = new List<MembresiaUsuario>();

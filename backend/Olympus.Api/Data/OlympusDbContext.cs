@@ -13,6 +13,10 @@ public class OlympusDbContext(DbContextOptions<OlympusDbContext> options) : DbCo
     public DbSet<PlanEntrenamiento> PlanesEntrenamiento => Set<PlanEntrenamiento>();
     public DbSet<DiaEntrenamiento> DiasEntrenamiento => Set<DiaEntrenamiento>();
     public DbSet<EjercicioItem> Ejercicios => Set<EjercicioItem>();
+    public DbSet<CajaTurno> CajasTurno => Set<CajaTurno>();
+    public DbSet<Producto> Productos => Set<Producto>();
+    public DbSet<VentaProducto> VentasProducto => Set<VentaProducto>();
+    public DbSet<PaseDiario> PasesDiarios => Set<PaseDiario>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -23,6 +27,8 @@ public class OlympusDbContext(DbContextOptions<OlympusDbContext> options) : DbCo
             entity.HasKey(usuario => usuario.Id);
             entity.Property(usuario => usuario.Nombre).HasMaxLength(100).IsRequired();
             entity.Property(usuario => usuario.Apellido).HasMaxLength(100).IsRequired();
+            entity.Property(usuario => usuario.Dni).HasMaxLength(20).IsRequired();
+            entity.HasIndex(usuario => usuario.Dni).IsUnique();
             entity.Property(usuario => usuario.Email).HasMaxLength(254).IsRequired();
             entity.HasIndex(usuario => usuario.Email).IsUnique();
             entity.Property(usuario => usuario.PasswordHash).IsRequired();
@@ -62,6 +68,7 @@ public class OlympusDbContext(DbContextOptions<OlympusDbContext> options) : DbCo
             entity.Property(pago => pago.TransaccionExternaId).HasMaxLength(50);
             entity.Property(pago => pago.PeriodoMeses).HasDefaultValue(1);
             entity.Property(pago => pago.EstadoPago).HasConversion<string>().HasMaxLength(20);
+            entity.HasIndex(pago => pago.CajaTurnoId);
             entity.HasIndex(pago => pago.PreferenciaId).IsUnique();
             entity.HasIndex(pago => pago.TransaccionExternaId).IsUnique();
             entity.HasOne(pago => pago.Usuario)
@@ -71,6 +78,10 @@ public class OlympusDbContext(DbContextOptions<OlympusDbContext> options) : DbCo
             entity.HasOne(pago => pago.MembresiaUsuario)
                 .WithMany(membresia => membresia.Pagos)
                 .HasForeignKey(pago => pago.MembresiaUsuarioId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(pago => pago.CajaTurno)
+                .WithMany(caja => caja.Pagos)
+                .HasForeignKey(pago => pago.CajaTurnoId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -120,6 +131,73 @@ public class OlympusDbContext(DbContextOptions<OlympusDbContext> options) : DbCo
             entity.Property(ejercicio => ejercicio.SeriesYRepeticiones).HasMaxLength(50).IsRequired();
             entity.Property(ejercicio => ejercicio.Notas).HasMaxLength(500);
             entity.HasIndex(ejercicio => new { ejercicio.DiaEntrenamientoId, ejercicio.Orden }).IsUnique();
+        });
+
+        modelBuilder.Entity<CajaTurno>(entity =>
+        {
+            entity.HasKey(caja => caja.Id);
+            entity.Property(caja => caja.Turno).HasMaxLength(20).IsRequired();
+            entity.Property(caja => caja.ResponsableTurno).HasMaxLength(250).IsRequired();
+            entity.Property(caja => caja.ResponsableTurnoNormalizado).HasMaxLength(250).IsRequired();
+            entity.Property(caja => caja.Estado).HasMaxLength(20).IsRequired();
+            entity.Property(caja => caja.MontoInicial).HasPrecision(12, 2);
+            entity.Property(caja => caja.MontoFinalEfectivoEsperado).HasPrecision(12, 2);
+            entity.Property(caja => caja.MontoFinalEfectivoReal).HasPrecision(12, 2);
+            entity.Property(caja => caja.Diferencia).HasPrecision(12, 2);
+            entity.Property(caja => caja.TotalCobrosEfectivo).HasPrecision(12, 2);
+            entity.Property(caja => caja.TotalCobrosDigitales).HasPrecision(12, 2);
+            entity.Property(caja => caja.Observaciones).HasMaxLength(2000);
+            entity.HasIndex(caja => new { caja.Fecha, caja.Turno })
+                .IsUnique()
+                .HasFilter("\"Estado\" = 'Abierta'");
+            entity.HasOne(caja => caja.UsuarioApertura).WithMany()
+                .HasForeignKey(caja => caja.UsuarioAperturaId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(caja => caja.UsuarioCierre).WithMany()
+                .HasForeignKey(caja => caja.UsuarioCierreId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Producto>(entity =>
+        {
+            entity.HasKey(producto => producto.Id);
+            entity.Property(producto => producto.Nombre).HasMaxLength(200).IsRequired();
+            entity.Property(producto => producto.Precio).HasPrecision(12, 2);
+            entity.Property(producto => producto.Codigo).HasMaxLength(100);
+            entity.HasIndex(producto => producto.Codigo).IsUnique();
+        });
+
+        modelBuilder.Entity<VentaProducto>(entity =>
+        {
+            entity.HasKey(venta => venta.Id);
+            entity.Property(venta => venta.MontoTotal).HasPrecision(12, 2);
+            entity.Property(venta => venta.MetodoPago).HasMaxLength(30).IsRequired();
+            entity.HasOne(venta => venta.Usuario).WithMany()
+                .HasForeignKey(venta => venta.UsuarioId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(venta => venta.CajaTurno).WithMany(caja => caja.Ventas)
+                .HasForeignKey(venta => venta.CajaTurnoId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasMany(venta => venta.Items).WithOne(item => item.VentaProducto)
+                .HasForeignKey(item => item.VentaProductoId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<VentaProductoItem>(entity =>
+        {
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.PrecioUnitario).HasPrecision(12, 2);
+            entity.HasOne(item => item.Producto).WithMany()
+                .HasForeignKey(item => item.ProductoId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<PaseDiario>(entity =>
+        {
+            entity.HasKey(pase => pase.Id);
+            entity.Property(pase => pase.NombreCompleto).HasMaxLength(200).IsRequired();
+            entity.Property(pase => pase.Dni).HasMaxLength(20).IsRequired();
+            entity.Property(pase => pase.Monto).HasPrecision(12, 2);
+            entity.Property(pase => pase.MetodoPago).HasMaxLength(30).IsRequired();
+            entity.HasIndex(pase => new { pase.Dni, pase.Fecha });
+            entity.HasOne(pase => pase.RegistradoPorUsuario).WithMany()
+                .HasForeignKey(pase => pase.RegistradoPorUsuarioId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(pase => pase.CajaTurno).WithMany(caja => caja.PasesDiarios)
+                .HasForeignKey(pase => pase.CajaTurnoId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Usuario>().HasData(RutinaSeedData.Usuarios);

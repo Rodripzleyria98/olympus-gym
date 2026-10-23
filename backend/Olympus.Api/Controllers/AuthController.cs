@@ -8,6 +8,7 @@ using Microsoft.IdentityModel.Tokens;
 using Olympus.Api.Data;
 using Olympus.Api.Dtos;
 using Olympus.Api.Models;
+using Npgsql;
 
 namespace Olympus.Api.Controllers;
 
@@ -22,9 +23,14 @@ public class AuthController(OlympusDbContext dbContext, IConfiguration configura
         CancellationToken cancellationToken)
     {
         var email = request.Email.Trim().ToLowerInvariant();
+        var dni = request.Dni.Trim();
         if (await dbContext.Usuarios.AnyAsync(usuario => usuario.Email == email, cancellationToken))
         {
             return Conflict(new { message = "El correo ya está registrado." });
+        }
+        if (await dbContext.Usuarios.AnyAsync(usuario => usuario.Dni == dni, cancellationToken))
+        {
+            return Conflict(new { message = "El DNI ya está registrado." });
         }
 
         var usuario = new Usuario
@@ -32,14 +38,23 @@ public class AuthController(OlympusDbContext dbContext, IConfiguration configura
             Id = Guid.NewGuid(),
             Nombre = request.Nombre.Trim(),
             Apellido = request.Apellido.Trim(),
+            Dni = dni,
             Email = email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-            Rol = RolUsuario.User,
+            Rol = RolUsuario.Socio,
             FechaRegistro = DateTime.UtcNow
         };
 
         dbContext.Usuarios.Add(usuario);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception) when (
+            exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            return Conflict(new { message = "El correo o DNI ya está registrado." });
+        }
         return StatusCode(StatusCodes.Status201Created, CreateAuthResponse(usuario));
     }
 
@@ -81,6 +96,6 @@ public class AuthController(OlympusDbContext dbContext, IConfiguration configura
         return new AuthResponseDto(
             new JwtSecurityTokenHandler().WriteToken(token),
             expiration,
-            new UsuarioDto(usuario.Id, usuario.Nombre, usuario.Apellido, usuario.Email, usuario.Rol.ToString()));
+            new UsuarioDto(usuario.Id, usuario.Nombre, usuario.Apellido, usuario.Email, usuario.Dni, usuario.Rol.ToString()));
     }
 }

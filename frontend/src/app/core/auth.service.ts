@@ -9,7 +9,7 @@ export interface UsuarioSesion {
   nombre: string;
   apellido: string;
   email: string;
-  rol: 'Admin' | 'User';
+  rol: 'Admin' | 'Profesor' | 'User' | 'Socio';
 }
 
 export interface AuthResponse {
@@ -30,25 +30,34 @@ export class AuthService {
   readonly token = computed(() => this.session()?.token ?? null);
   readonly isAuthenticated = computed(() => this.currentUser() !== null);
   readonly isAdmin = computed(() => this.hasRole('Admin'));
+  readonly isProfesor = computed(() => this.hasRole('Profesor'));
 
   getRol(): string | null {
-    const token = this.token();
-    if (!token) return null;
-
-    try {
-      const payloadSegment = token.split('.')[1];
-      if (!payloadSegment) return null;
-      const base64 = payloadSegment.replace(/-/g, '+').replace(/_/g, '/');
-      const payload = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='))) as Record<string, unknown>;
-      const role = payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ?? payload['role'];
-      return typeof role === 'string' ? role : Array.isArray(role) && typeof role[0] === 'string' ? role[0] : null;
-    } catch {
-      return null;
-    }
+    return this.getRoles()[0] ?? null;
   }
 
   hasRole(role: string): boolean {
-    return this.getRol()?.toLowerCase() === role.toLowerCase();
+    return this.getRoles().some((value) => value.toLowerCase() === role.toLowerCase());
+  }
+
+  hasAnyRole(roles: string[]): boolean {
+    return roles.some((role) => this.hasRole(role));
+  }
+
+  private getRoles(): string[] {
+    const token = this.token();
+    if (!token) return [];
+    try {
+      const payloadSegment = token.split('.')[1];
+      if (!payloadSegment) return [];
+      const base64 = payloadSegment.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='))) as Record<string, unknown>;
+      const role = payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ?? payload['role'];
+      if (typeof role === 'string') return [role];
+      return Array.isArray(role) ? role.filter((value): value is string => typeof value === 'string') : [];
+    } catch {
+      return [];
+    }
   }
 
   login(email: string, password: string) {
@@ -57,7 +66,7 @@ export class AuthService {
     );
   }
 
-  register(payload: { nombre: string; apellido: string; email: string; password: string }) {
+  register(payload: { nombre: string; apellido: string; dni: string; email: string; password: string }) {
     return this.http.post<AuthResponse>(`${API_BASE_URL}/auth/register`, payload).pipe(
       tap((response) => this.saveSession(response)),
     );

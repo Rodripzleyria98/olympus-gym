@@ -39,6 +39,11 @@ public static class RutinaSeedData
         Id = id,
         Nombre = nombre,
         Apellido = apellido,
+        Dni = id == HeberId ? "27000001" :
+            id == JoelId ? "27000002" :
+            id == FedeId ? "27000003" :
+            id == KarenId ? "27000004" :
+            id == BiancaId ? "27000005" : "27000006",
         Email = email,
         PasswordHash = DemoPasswordHash,
         Rol = RolUsuario.User,

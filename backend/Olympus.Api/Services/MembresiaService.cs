@@ -40,7 +40,7 @@ public class MembresiaService(OlympusDbContext dbContext) : IMembresiaService
     {
         var usuario = await dbContext.Usuarios.AsNoTracking()
             .Where(item => item.Id == usuarioId)
-            .Select(item => new UsuarioDto(item.Id, item.Nombre, item.Apellido, item.Email, item.Rol.ToString()))
+            .Select(item => new UsuarioDto(item.Id, item.Nombre, item.Apellido, item.Email, item.Dni, item.Rol.ToString()))
             .FirstOrDefaultAsync(cancellationToken);
 
         if (usuario is null)

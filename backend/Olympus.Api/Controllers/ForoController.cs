@@ -10,7 +10,7 @@ namespace Olympus.Api.Controllers;
 
 [ApiController]
 [Route("api/foro")]
-public class ForoController(OlympusDbContext dbContext) : ControllerBase
+public class ForoController(OlympusDbContext dbContext, IWebHostEnvironment environment) : ControllerBase
 {
     [HttpGet]
     [AllowAnonymous]
@@ -52,17 +52,39 @@ public class ForoController(OlympusDbContext dbContext) : ControllerBase
         return Ok(PagedResponse<PublicacionDto>.Create(items, page, pageSize, totalCount));
     }
 
+    [HttpGet("{id:int}")]
+    [AllowAnonymous]
+    public async Task<ActionResult<PublicacionDto>> GetById(int id, CancellationToken cancellationToken)
+    {
+        var publicacion = await dbContext.PublicacionesForo.AsNoTracking()
+            .Where(item => item.Id == id)
+            .Select(item => new PublicacionDto(
+                item.Id,
+                item.Titulo,
+                item.Contenido,
+                item.ImagenUrl,
+                item.FechaPublicacion,
+                item.AutorId,
+                item.Autor.Nombre + " " + item.Autor.Apellido))
+            .FirstOrDefaultAsync(cancellationToken);
+        return publicacion is null ? NotFound() : Ok(publicacion);
+    }
+
     [HttpPost]
+    [HttpPost("posts")]
     [Authorize(Roles = "Admin")]
     public async Task<ActionResult<PublicacionDto>> Create(
-        PublicacionRequestDto request,
+        [FromForm] PublicacionRequestDto request,
         CancellationToken cancellationToken)
     {
+        var imageError = ValidateImage(request.Imagen);
+        if (imageError is not null) return BadRequest(new { message = imageError });
+        var imageUrl = await SaveImageAsync(request.Imagen, cancellationToken);
         var publicacion = new PublicacionForo
         {
             Titulo = request.Titulo.Trim(),
             Contenido = request.Contenido.Trim(),
-            ImagenUrl = request.ImagenUrl,
+            ImagenUrl = imageUrl,
             FechaPublicacion = DateTime.UtcNow,
             AutorId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!)
         };
@@ -78,12 +100,15 @@ public class ForoController(OlympusDbContext dbContext) : ControllerBase
             publicacion.FechaPublicacion,
             publicacion.AutorId,
             $"{publicacion.Autor.Nombre} {publicacion.Autor.Apellido}");
-        return Created($"/api/foro/{publicacion.Id}", response);
+        return CreatedAtAction(nameof(GetById), new { id = publicacion.Id }, response);
     }
 
     [HttpPut("{id:int}")]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> Update(int id, PublicacionRequestDto request, CancellationToken cancellationToken)
+    public async Task<IActionResult> Update(
+        int id,
+        [FromForm] PublicacionRequestDto request,
+        CancellationToken cancellationToken)
     {
         var publicacion = await dbContext.PublicacionesForo.FindAsync([id], cancellationToken);
         if (publicacion is null)
@@ -91,11 +116,45 @@ public class ForoController(OlympusDbContext dbContext) : ControllerBase
             return NotFound();
         }
 
+        var imageError = ValidateImage(request.Imagen);
+        if (imageError is not null) return BadRequest(new { message = imageError });
         publicacion.Titulo = request.Titulo.Trim();
         publicacion.Contenido = request.Contenido.Trim();
-        publicacion.ImagenUrl = request.ImagenUrl;
+        if (request.Imagen is not null)
+            publicacion.ImagenUrl = await SaveImageAsync(request.Imagen, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return NoContent();
+    }
+
+    private static string? ValidateImage(IFormFile? image)
+    {
+        if (image is null) return null;
+        if (image.Length == 0) return "El archivo de imagen está vacío.";
+        if (image.Length > 5 * 1024 * 1024)
+            return "La imagen no puede superar los 5 MB.";
+
+        var extension = Path.GetExtension(image.FileName).ToLowerInvariant();
+        var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp" };
+        var allowedContentTypes = new[] { "image/jpeg", "image/png", "image/webp" };
+        if (!allowedExtensions.Contains(extension) ||
+            !allowedContentTypes.Contains(image.ContentType, StringComparer.OrdinalIgnoreCase))
+            return "Formato de imagen no permitido. Usa JPG, PNG o WEBP.";
+
+        return null;
+    }
+
+    private async Task<string?> SaveImageAsync(IFormFile? image, CancellationToken cancellationToken)
+    {
+        if (image is null) return null;
+
+        var extension = Path.GetExtension(image.FileName).ToLowerInvariant();
+        var folder = Path.Combine(environment.WebRootPath ?? Path.Combine(environment.ContentRootPath, "wwwroot"), "uploads", "foro");
+        Directory.CreateDirectory(folder);
+        var fileName = $"{Guid.NewGuid():N}{extension}";
+        var path = Path.Combine(folder, fileName);
+        await using var stream = System.IO.File.Create(path);
+        await image.CopyToAsync(stream, cancellationToken);
+        return $"/uploads/foro/{fileName}";
     }
 
     [HttpDelete("{id:int}")]
