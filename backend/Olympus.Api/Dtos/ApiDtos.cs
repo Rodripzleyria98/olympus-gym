@@ -197,9 +197,56 @@ public class ActualizarPerfilRequestDto
 
 public record CajaTurnoDto(
     int Id, DateTime Fecha, string Turno, string ResponsableTurno, Guid UsuarioAperturaId, Guid? UsuarioCierreId,
-    decimal MontoInicial, decimal MontoFinalEfectivoEsperado, decimal? MontoFinalEfectivoReal,
-    decimal? Diferencia, decimal TotalCobrosEfectivo, decimal TotalCobrosDigitales,
-    string? Observaciones, string Estado);
+    decimal MontoInicial, decimal? MontoFinalEfectivoReal, string? Observaciones, string Estado);
+
+public record CajaVentaItemDto(string Producto, int Cantidad, decimal PrecioUnitario);
+
+public record CajaVentaDto(
+    int Id,
+    DateTime Fecha,
+    decimal MontoTotal,
+    string MetodoPago,
+    IReadOnlyList<CajaVentaItemDto> Items);
+
+public record CajaPaseDto(
+    int Id,
+    string NombreCompleto,
+    string Dni,
+    DateTime Fecha,
+    decimal Monto,
+    string MetodoPago);
+
+public record CajaPagoMembresiaDto(
+    Guid Id,
+    string Socio,
+    string Plan,
+    DateTime Fecha,
+    decimal Monto,
+    string MetodoPago,
+    string EstadoPago);
+
+public record PagoPendienteAdminDto(
+    Guid Id,
+    Guid UsuarioId,
+    string Socio,
+    string Dni,
+    string Plan,
+    DateTime Fecha,
+    decimal Monto,
+    string MetodoPago,
+    int? CajaTurnoId,
+    string Turno);
+
+public record CajaDetalleDto(
+    CajaTurnoDto Caja,
+    IReadOnlyList<CajaPagoMembresiaDto> CobrosMembresia,
+    IReadOnlyList<CajaVentaDto> Ventas,
+    IReadOnlyList<CajaPaseDto> Pases);
+
+public record CajaActualDto(
+    DateTime Fecha,
+    string Turno,
+    CajaDetalleDto? Detalle);
 
 public class AbrirCajaRequestDto
 {
@@ -212,11 +259,48 @@ public class AbrirCajaRequestDto
 
 public class CerrarCajaRequestDto
 {
-    [Range(typeof(decimal), "0", "999999999.99")]
-    public decimal MontoFinalEfectivoReal { get; set; }
     [StringLength(2000)]
     public string? Observaciones { get; set; }
 }
+
+public class AsignarMembresiaAdminRequestDto
+{
+    [Required]
+    public Guid UsuarioId { get; set; }
+    [Range(1, int.MaxValue)]
+    public int PlanMembresiaId { get; set; }
+    [Required, RegularExpression("^(Efectivo|Bonificada)$")]
+    public string TipoOtorgamiento { get; set; } = "Bonificada";
+}
+
+public class RegistrarSocioConMembresiaRequestDto
+{
+    [Required, StringLength(100)]
+    public string Nombre { get; set; } = string.Empty;
+    [Required, StringLength(100)]
+    public string Apellido { get; set; } = string.Empty;
+    [Required, RegularExpression(@"^\d{7,12}$")]
+    public string Dni { get; set; } = string.Empty;
+    [Required, EmailAddress, StringLength(254)]
+    public string Email { get; set; } = string.Empty;
+    [Required, StringLength(100)]
+    [RegularExpression(@"^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9\s]).{8,100}$",
+        ErrorMessage = "La contraseña debe tener al menos 8 caracteres, una mayúscula, un número y un carácter especial.")]
+    public string Password { get; set; } = string.Empty;
+    [Range(1, int.MaxValue)]
+    public int PlanMembresiaId { get; set; }
+    [Required, RegularExpression("^(Efectivo|Bonificada)$")]
+    public string TipoOtorgamiento { get; set; } = "Bonificada";
+}
+
+public record SocioConMembresiaAdminResponseDto(
+    Guid UsuarioId,
+    string NombreCompleto,
+    string Dni,
+    string Plan,
+    DateTime FechaInicio,
+    DateTime FechaFin,
+    string TipoOtorgamiento);
 
 public record ProductoDto(int Id, string Nombre, int StockActual, int StockMinimo, decimal Precio, string? Codigo);
 

@@ -11,5 +11,7 @@ public interface IUsuarioService
         int pageSize,
         CancellationToken cancellationToken);
     Task<HistorialUsuarioDto?> GetHistorialAsync(Guid usuarioId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<PagoPendienteAdminDto>> GetPagosPendientesAsync(CancellationToken cancellationToken);
+    Task<bool> ValidarPagoPendienteAsync(Guid pagoId, CancellationToken cancellationToken);
     Task<bool> CambiarEstadoAsync(Guid usuarioId, CambiarEstadoUsuarioRequestDto request, CancellationToken cancellationToken);
 }

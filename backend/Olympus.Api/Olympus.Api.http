@@ -4,6 +4,16 @@
 @planId = 1
 @productoId = 1
 @cajaId = 1
+@pagoId = REPLACE_WITH_PAGO_GUID
+
+### List pending membership payments (admin or professor)
+GET {{Olympus.Api_HostAddress}}/api/admin/pagos/pendientes
+Authorization: Bearer {{token}}
+
+### Validate a pending bank-transfer payment (admin or professor)
+PUT {{Olympus.Api_HostAddress}}/api/admin/pagos/{{pagoId}}/validar
+Authorization: Bearer {{token}}
+Content-Length: 0
 
 ### List registered users and current roles (admin)
 GET {{Olympus.Api_HostAddress}}/api/admin/usuarios/roles
@@ -49,13 +59,42 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "montoFinalEfectivoReal": 75000,
   "observaciones": "Arqueo de cierre"
 }
 
 ### Closed shift report (admin)
 GET {{Olympus.Api_HostAddress}}/api/caja/historial?desde=2026-10-01&hasta=2026-10-31
 Authorization: Bearer {{token}}
+
+### View sales, membership collections, and daily passes from a shift (admin)
+GET {{Olympus.Api_HostAddress}}/api/caja/{{cajaId}}/detalle
+Authorization: Bearer {{token}}
+
+### Assign a complimentary membership to an existing member (admin)
+POST {{Olympus.Api_HostAddress}}/api/admin/membresias/asignar
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "usuarioId": "{{socioId}}",
+  "planMembresiaId": {{planId}},
+  "tipoOtorgamiento": "Bonificada"
+}
+
+### Register a new member and assign a complimentary plan (admin)
+POST {{Olympus.Api_HostAddress}}/api/admin/usuarios/crear-con-membresia
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nombre": "Ana",
+  "apellido": "Ejemplo",
+  "dni": "30123457",
+  "email": "ana.ejemplo@example.com",
+  "password": "GymPass!2026",
+  "planMembresiaId": {{planId}},
+  "tipoOtorgamiento": "Bonificada"
+}
 
 ### Product catalog (admin or professor)
 GET {{Olympus.Api_HostAddress}}/api/productos

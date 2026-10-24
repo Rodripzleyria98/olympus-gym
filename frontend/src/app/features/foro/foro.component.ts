@@ -45,7 +45,9 @@ interface Publicacion {
       <div class="news-grid">
         @for (post of posts(); track post.id) {
           <article class="news-item">
-            @if (post.imagenUrl) { <img class="news-image" [src]="imageSrc(post.imagenUrl)" [alt]="post.titulo" /> }
+            @if (post.imagenUrl && !brokenImageIds().has(post.id)) {
+              <img class="news-image" [src]="imageSrc(post.imagenUrl)" [alt]="post.titulo" (error)="onImageError(post.id)" />
+            } @else if (post.imagenUrl) { <div class="news-image-fallback" role="img" aria-label="Imagen no disponible">Imagen no disponible</div> }
             <div class="news-body"><div class="news-meta"><span>{{ post.autorNombre }}</span><time>{{ post.fechaPublicacion | date:'d MMM y' }}</time></div>
               <h2>{{ post.titulo }}</h2><p>{{ post.contenido }}</p>
               @if (auth.isAdmin()) { <div class="item-actions"><button class="text-button" type="button" (click)="edit(post)">Editar</button><button class="text-button danger-text" type="button" (click)="remove(post.id)">Eliminar</button></div> }
@@ -82,6 +84,7 @@ export class ForoComponent implements OnInit {
   draft = { titulo: '', contenido: '' };
   private selectedFile: File | null = null;
   readonly imagePreview = signal<string | null>(null);
+  readonly brokenImageIds = signal<Set<number>>(new Set());
 
   ngOnInit(): void {
     this.searchChanges.pipe(
@@ -172,6 +175,10 @@ export class ForoComponent implements OnInit {
     return url.startsWith('/')
       ? `${API_BASE_URL.replace(/\/api\/?$/, '')}${url}`
       : url;
+  }
+
+  onImageError(postId: number): void {
+    this.brokenImageIds.update(ids => new Set(ids).add(postId));
   }
 
   save(): void {

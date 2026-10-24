@@ -23,7 +23,7 @@ interface Socio {
 }
 
 interface Historial {
-  membresias: { id: string; plan: string; fechaInicio: string; fechaFin: string; estado: string; pagos: { id: string; monto: number; estadoPago: string; fechaPago: string }[] }[];
+  membresias: { id: string; plan: string; fechaInicio: string; fechaFin: string; estado: string; pagos: { id: string; monto: number; metodoPago: string; estadoPago: string; fechaPago: string }[] }[];
 }
 
 interface UsuarioRol {
@@ -35,12 +35,52 @@ interface UsuarioRol {
   rol: string;
 }
 
+interface PagoPendiente {
+  id: string;
+  usuarioId: string;
+  socio: string;
+  dni: string;
+  plan: string;
+  fecha: string;
+  monto: number;
+  metodoPago: string;
+  cajaTurnoId: number | null;
+  turno: string;
+}
+
 @Component({
   selector: 'app-admin-dashboard',
   imports: [FormsModule, DatePipe, CurrencyPipe, AsignarRutinaModalComponent],
   template: `
     <section class="content-page" [class.routine-modal-open]="routineSocio() !== null">
       <div class="page-heading"><span class="eyebrow">GESTIÓN · SOCIOS</span><h1>Panel de socios</h1><p class="lede">Estado actual de membresías y pagos.</p></div>
+      @if (auth.isAdmin() || auth.isProfesor()) {
+        <section class="history-panel">
+          <div class="heading-split">
+            <div><span class="eyebrow">PAGOS POR VALIDAR</span><h2>Renovaciones pendientes</h2><p class="muted">Revisa los pagos de membresía reportados por los socios.</p></div>
+            <button class="button button-small" type="button" (click)="loadPendingPayments()">Actualizar</button>
+          </div>
+          @if (pendingPaymentError()) { <p class="form-error" role="alert">{{ pendingPaymentError() }}</p> }
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>Socio</th><th>Plan</th><th>Fecha</th><th>Monto</th><th>Método</th><th>Acción</th></tr></thead><tbody>
+            @for (payment of pendingPayments(); track payment.id) {
+              <tr>
+                <td><strong>{{ payment.socio }}</strong><small>DNI {{ payment.dni }}</small></td>
+                <td>{{ payment.plan }}</td>
+                <td>{{ payment.fecha | date:'d MMM y, HH:mm' }}</td>
+                <td>{{ payment.monto | currency:'ARS':'symbol':'1.0-2' }}</td>
+                <td>{{ payment.metodoPago }}</td>
+                <td>
+                  @if (payment.metodoPago === 'Transferencia') {
+                    <button class="text-button" type="button" [disabled]="validatingPaymentId() === payment.id" (click)="approvePayment(payment.id)">
+                      {{ validatingPaymentId() === payment.id ? 'Validando…' : 'Validar pago' }}
+                    </button>
+                  } @else { <span class="status-badge status-inactive">Esperando confirmación</span> }
+                </td>
+              </tr>
+            } @empty { <tr><td colspan="6" class="table-empty">No hay pagos pendientes de revisión.</td></tr> }
+          </tbody></table></div>
+        </section>
+      }
       @if (auth.isAdmin()) {
         <section class="history-panel">
           <div class="heading-split">
@@ -122,7 +162,7 @@ interface UsuarioRol {
               <div class="history-row"><div><strong>{{ membership.plan }}</strong><small>{{ membership.fechaInicio | date:'d MMM y' }} – {{ membership.fechaFin | date:'d MMM y' }}</small></div><span class="status-badge" [class.status-active]="membership.estado === 'Vigente'" [class.status-inactive]="membership.estado !== 'Vigente'">{{ membership.estado }}</span>
                 @for (payment of membership.pagos; track payment.id) {
                   <div class="payment-row"><span>Pago {{ payment.fechaPago | date:'d MMM y' }}</span><strong>{{ payment.monto | currency:'MXN':'symbol':'1.0-0' }}</strong><span>{{ payment.estadoPago }}</span>
-                    @if (auth.isAdmin() && payment.estadoPago === 'Pendiente') { <button class="text-button" type="button" (click)="approve(payment.id)">Validar pago</button> }
+                    @if ((auth.isAdmin() || auth.isProfesor()) && payment.estadoPago === 'Pendiente' && payment.metodoPago === 'Transferencia') { <button class="text-button" type="button" (click)="approvePayment(payment.id)">Validar pago</button> }
                   </div>
                 }
               </div>
@@ -158,6 +198,9 @@ export class AdminDashboardComponent implements OnInit {
   readonly roleError = signal('');
   readonly roleNotice = signal('');
   readonly savingRoleId = signal<string | null>(null);
+  readonly pendingPayments = signal<PagoPendiente[]>([]);
+  readonly pendingPaymentError = signal('');
+  readonly validatingPaymentId = signal<string | null>(null);
   profileDraft = { nombre: '', apellido: '', dni: '' };
   search = '';
   status = '';
@@ -171,6 +214,15 @@ export class AdminDashboardComponent implements OnInit {
     ).subscribe(() => this.load());
     this.load();
     if (this.auth.isAdmin()) this.loadRoleAccounts();
+    if (this.auth.isAdmin() || this.auth.isProfesor()) this.loadPendingPayments();
+  }
+
+  loadPendingPayments(): void {
+    this.pendingPaymentError.set('');
+    this.http.get<PagoPendiente[]>(`${API_BASE_URL}/admin/pagos/pendientes`).subscribe({
+      next: payments => this.pendingPayments.set(payments),
+      error: (error: HttpErrorResponse) => this.pendingPaymentError.set(error.error?.message ?? 'No se pudieron cargar los pagos pendientes.'),
+    });
   }
 
   loadRoleAccounts(): void {
@@ -293,10 +345,21 @@ export class AdminDashboardComponent implements OnInit {
     this.noticeTimer = setTimeout(() => this.routineNotice.set(''), 5000);
   }
 
-  approve(paymentId: string): void {
-    const selected = this.selected();
-    if (!selected) return;
-    this.http.put(`${API_BASE_URL}/admin/usuarios/${selected.id}/estado`, { pagoId: paymentId, estadoPago: 'Aprobado' })
-      .subscribe({ next: () => { this.view(selected); this.load(); } });
+  approvePayment(paymentId: string): void {
+    this.validatingPaymentId.set(paymentId);
+    this.pendingPaymentError.set('');
+    this.http.put<void>(`${API_BASE_URL}/admin/pagos/${paymentId}/validar`, {}).subscribe({
+      next: () => {
+        this.validatingPaymentId.set(null);
+        this.loadPendingPayments();
+        this.load();
+        const selected = this.selected();
+        if (selected) this.view(selected);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.pendingPaymentError.set(error.error?.message ?? 'No se pudo validar el pago.');
+        this.validatingPaymentId.set(null);
+      },
+    });
   }
 }

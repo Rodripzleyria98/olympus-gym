@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Olympus.Api.Data;
 using Olympus.Api.Dtos;
 using Olympus.Api.Models;
+using Olympus.Api.Services;
 using Npgsql;
 
 namespace Olympus.Api.Controllers;
@@ -19,7 +20,7 @@ public class CajaController(OlympusDbContext dbContext) : ControllerBase
         AbrirCajaRequestDto request,
         CancellationToken cancellationToken)
     {
-        var (fecha, turno) = TurnoActual();
+        var (fecha, turno) = CajaTurnoHelper.TurnoActual();
         var responsable = NormalizarResponsable(request.ResponsableTurno);
         if (string.IsNullOrWhiteSpace(responsable))
             return BadRequest(new { message = "Indica el nombre de la persona responsable del turno." });
@@ -36,7 +37,6 @@ public class CajaController(OlympusDbContext dbContext) : ControllerBase
             ResponsableTurnoNormalizado = responsable,
             UsuarioAperturaId = UsuarioActualId(),
             MontoInicial = request.MontoInicial,
-            MontoFinalEfectivoEsperado = request.MontoInicial,
             Estado = "Abierta"
         };
         dbContext.CajasTurno.Add(caja);
@@ -58,45 +58,16 @@ public class CajaController(OlympusDbContext dbContext) : ControllerBase
         CerrarCajaRequestDto request,
         CancellationToken cancellationToken)
     {
-        var (fecha, turno) = TurnoActual();
+        var (fecha, turno) = CajaTurnoHelper.TurnoActual();
         var caja = await dbContext.CajasTurno.FirstOrDefaultAsync(item =>
             item.Fecha == fecha && item.Turno == turno && item.Estado == "Abierta", cancellationToken);
         if (caja is null) return Conflict(new { message = "No hay una caja abierta para el turno actual." });
 
-        var pagos = await dbContext.Pagos.Where(pago =>
-                pago.CajaTurnoId == caja.Id && pago.EstadoPago == EstadoPago.Aprobado)
-            .GroupBy(pago => pago.MetodoPago)
-            .Select(group => new { Metodo = group.Key, Total = group.Sum(pago => pago.Monto) })
-            .ToListAsync(cancellationToken);
-        var ventas = await dbContext.VentasProducto.Where(venta => venta.CajaTurnoId == caja.Id)
-            .GroupBy(venta => venta.MetodoPago)
-            .Select(group => new { Metodo = group.Key, Total = group.Sum(venta => venta.MontoTotal) })
-            .ToListAsync(cancellationToken);
-        var pases = await dbContext.PasesDiarios.Where(pase => pase.CajaTurnoId == caja.Id)
-            .GroupBy(pase => pase.MetodoPago)
-            .Select(group => new { Metodo = group.Key, Total = group.Sum(pase => pase.Monto) })
-            .ToListAsync(cancellationToken);
-
-        var movimientos = pagos.Select(item => (item.Metodo, item.Total))
-            .Concat(ventas.Select(item => (item.Metodo, item.Total)))
-            .Concat(pases.Select(item => (item.Metodo, item.Total)));
-        caja.TotalCobrosEfectivo = movimientos
-            .Where(item => EsEfectivo(item.Metodo)).Sum(item => item.Total);
-        caja.TotalCobrosDigitales = movimientos
-            .Where(item => !EsEfectivo(item.Metodo)).Sum(item => item.Total);
-        caja.MontoFinalEfectivoEsperado = caja.MontoInicial + caja.TotalCobrosEfectivo;
-        caja.MontoFinalEfectivoReal = request.MontoFinalEfectivoReal;
-        caja.Diferencia = request.MontoFinalEfectivoReal - caja.MontoFinalEfectivoEsperado;
         caja.Observaciones = request.Observaciones?.Trim();
         caja.UsuarioCierreId = UsuarioActualId();
         caja.Estado = "Cerrada";
         var actualizados = await dbContext.CajasTurno.Where(item => item.Id == caja.Id && item.Estado == "Abierta")
             .ExecuteUpdateAsync(setters => setters
-                .SetProperty(item => item.TotalCobrosEfectivo, caja.TotalCobrosEfectivo)
-                .SetProperty(item => item.TotalCobrosDigitales, caja.TotalCobrosDigitales)
-                .SetProperty(item => item.MontoFinalEfectivoEsperado, caja.MontoFinalEfectivoEsperado)
-                .SetProperty(item => item.MontoFinalEfectivoReal, caja.MontoFinalEfectivoReal)
-                .SetProperty(item => item.Diferencia, caja.Diferencia)
                 .SetProperty(item => item.Observaciones, caja.Observaciones)
                 .SetProperty(item => item.UsuarioCierreId, caja.UsuarioCierreId)
                 .SetProperty(item => item.Estado, caja.Estado), cancellationToken);
@@ -105,33 +76,23 @@ public class CajaController(OlympusDbContext dbContext) : ControllerBase
     }
 
     [HttpGet("actual")]
-    public async Task<IActionResult> Actual(CancellationToken cancellationToken)
+    public async Task<ActionResult<CajaActualDto>> Actual(CancellationToken cancellationToken)
     {
-        var (fecha, turno) = TurnoActual();
+        var (fecha, turno) = CajaTurnoHelper.TurnoActual();
         var caja = await dbContext.CajasTurno.AsNoTracking().FirstOrDefaultAsync(item =>
             item.Fecha == fecha && item.Turno == turno && item.Estado == "Abierta", cancellationToken);
-        if (caja is not null)
-        {
-            var efectivoPagos = await dbContext.Pagos.Where(pago => pago.CajaTurnoId == caja.Id &&
-                        pago.EstadoPago == EstadoPago.Aprobado && pago.MetodoPago == "Efectivo")
-                    .SumAsync(pago => (decimal?)pago.Monto, cancellationToken) ?? 0m;
-            var efectivoVentas = await dbContext.VentasProducto.Where(venta =>
-                    venta.CajaTurnoId == caja.Id && venta.MetodoPago == "Efectivo")
-                .SumAsync(venta => (decimal?)venta.MontoTotal, cancellationToken) ?? 0m;
-            var efectivoPases = await dbContext.PasesDiarios.Where(pase =>
-                    pase.CajaTurnoId == caja.Id && pase.MetodoPago == "Efectivo")
-                .SumAsync(pase => (decimal?)pase.Monto, cancellationToken) ?? 0m;
-            caja.TotalCobrosEfectivo = efectivoPagos + efectivoVentas + efectivoPases;
-            var totalPagos = await dbContext.Pagos.Where(pago => pago.CajaTurnoId == caja.Id && pago.EstadoPago == EstadoPago.Aprobado)
-                .SumAsync(pago => (decimal?)pago.Monto, cancellationToken) ?? 0m;
-            var totalVentas = await dbContext.VentasProducto.Where(venta => venta.CajaTurnoId == caja.Id)
-                .SumAsync(venta => (decimal?)venta.MontoTotal, cancellationToken) ?? 0m;
-            var totalPases = await dbContext.PasesDiarios.Where(pase => pase.CajaTurnoId == caja.Id)
-                .SumAsync(pase => (decimal?)pase.Monto, cancellationToken) ?? 0m;
-            caja.TotalCobrosDigitales = totalPagos + totalVentas + totalPases - caja.TotalCobrosEfectivo;
-            caja.MontoFinalEfectivoEsperado = caja.MontoInicial + caja.TotalCobrosEfectivo;
-        }
-        return Ok(new { fecha, turno, caja = caja is null ? null : CajaDto(caja) });
+        var detalle = caja is null ? null : await ObtenerDetalleAsync(caja, cancellationToken);
+        return Ok(new CajaActualDto(fecha, turno, detalle));
+    }
+
+    [HttpGet("{id:int}/detalle")]
+    public async Task<ActionResult<CajaDetalleDto>> ObtenerDetalle(
+        int id,
+        CancellationToken cancellationToken)
+    {
+        var caja = await dbContext.CajasTurno.AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+        return caja is null ? NotFound() : Ok(await ObtenerDetalleAsync(caja, cancellationToken));
     }
 
     [HttpGet("historial")]
@@ -146,26 +107,44 @@ public class CajaController(OlympusDbContext dbContext) : ControllerBase
         var cajas = await query.OrderByDescending(caja => caja.Fecha).ThenByDescending(caja => caja.Id)
             .Select(caja => new CajaTurnoDto(
                 caja.Id, caja.Fecha, caja.Turno, caja.ResponsableTurno, caja.UsuarioAperturaId, caja.UsuarioCierreId,
-                caja.MontoInicial, caja.MontoFinalEfectivoEsperado, caja.MontoFinalEfectivoReal,
-                caja.Diferencia, caja.TotalCobrosEfectivo, caja.TotalCobrosDigitales,
-                caja.Observaciones, caja.Estado))
+                caja.MontoInicial, caja.MontoFinalEfectivoReal, caja.Observaciones, caja.Estado))
             .ToListAsync(cancellationToken);
         return Ok(cajas);
     }
 
-    internal static (DateTime Fecha, string Turno) TurnoActual()
+    private async Task<CajaDetalleDto> ObtenerDetalleAsync(CajaTurno caja, CancellationToken cancellationToken)
     {
-        var zoneId = OperatingSystem.IsWindows()
-            ? "Argentina Standard Time"
-            : "America/Argentina/Buenos_Aires";
-        var local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById(zoneId));
-        var turno = local.Hour < 6 ? "Noche" : local.Hour < 14 ? "Mañana" : local.Hour < 22 ? "Tarde" : "Noche";
-        var fechaTurno = local.Hour < 6 && turno == "Noche" ? local.Date.AddDays(-1) : local.Date;
-        return (DateTime.SpecifyKind(fechaTurno, DateTimeKind.Utc), turno);
+        var cobrosMembresia = await dbContext.Pagos.AsNoTracking()
+            .Where(pago => pago.CajaTurnoId == caja.Id)
+            .OrderByDescending(pago => pago.FechaAcreditacion ?? pago.FechaCreacion)
+            .Select(pago => new CajaPagoMembresiaDto(
+                pago.Id,
+                pago.Usuario.Nombre + " " + pago.Usuario.Apellido,
+                pago.MembresiaUsuario.PlanMembresia.Nombre,
+                pago.FechaAcreditacion ?? pago.FechaCreacion,
+                pago.Monto,
+                pago.MetodoPago,
+                pago.EstadoPago.ToString()))
+            .ToListAsync(cancellationToken);
+        var ventas = await dbContext.VentasProducto.AsNoTracking()
+            .Where(venta => venta.CajaTurnoId == caja.Id)
+            .OrderByDescending(venta => venta.Fecha)
+            .Select(venta => new CajaVentaDto(
+                venta.Id,
+                venta.Fecha,
+                venta.MontoTotal,
+                venta.MetodoPago,
+                venta.Items.Select(item => new CajaVentaItemDto(
+                    item.Producto.Nombre, item.Cantidad, item.PrecioUnitario)).ToArray()))
+            .ToListAsync(cancellationToken);
+        var pases = await dbContext.PasesDiarios.AsNoTracking()
+            .Where(pase => pase.CajaTurnoId == caja.Id)
+            .OrderByDescending(pase => pase.Fecha)
+            .Select(pase => new CajaPaseDto(
+                pase.Id, pase.NombreCompleto, pase.Dni, pase.Fecha, pase.Monto, pase.MetodoPago))
+            .ToListAsync(cancellationToken);
+        return new CajaDetalleDto(CajaDto(caja), cobrosMembresia, ventas, pases);
     }
-
-    internal static bool EsEfectivo(string metodo) =>
-        string.Equals(metodo, "Efectivo", StringComparison.OrdinalIgnoreCase);
 
     internal static string NormalizarResponsable(string responsable) =>
         string.Join(' ', responsable.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
@@ -173,9 +152,7 @@ public class CajaController(OlympusDbContext dbContext) : ControllerBase
 
     internal static CajaTurnoDto CajaDto(CajaTurno caja) => new(
         caja.Id, caja.Fecha, caja.Turno, caja.ResponsableTurno, caja.UsuarioAperturaId, caja.UsuarioCierreId,
-        caja.MontoInicial, caja.MontoFinalEfectivoEsperado, caja.MontoFinalEfectivoReal,
-        caja.Diferencia, caja.TotalCobrosEfectivo, caja.TotalCobrosDigitales,
-        caja.Observaciones, caja.Estado);
+        caja.MontoInicial, caja.MontoFinalEfectivoReal, caja.Observaciones, caja.Estado);
 
     internal Guid UsuarioActualId() => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 }
@@ -288,7 +265,7 @@ public class ProductosController(OlympusDbContext dbContext) : ControllerBase
 
     private async Task<CajaTurno?> ObtenerCajaAbiertaAsync(CancellationToken cancellationToken)
     {
-        var (fecha, turno) = CajaController.TurnoActual();
+        var (fecha, turno) = CajaTurnoHelper.TurnoActual();
         return await dbContext.CajasTurno.FirstOrDefaultAsync(caja =>
             caja.Fecha == fecha && caja.Turno == turno && caja.Estado == "Abierta", cancellationToken);
     }
@@ -324,10 +301,10 @@ public class PasesDiariosController(OlympusDbContext dbContext) : ControllerBase
         if (await dbContext.PasesDiarios.AnyAsync(pase => pase.Dni == dni && pase.Fecha == hoy, cancellationToken))
             return Conflict(new { message = "Ya existe un pase diario para este DNI en el día de hoy." });
 
-        var (fechaTurno, turno) = CajaController.TurnoActual();
+        var (fechaTurno, turno) = CajaTurnoHelper.TurnoActual();
         var caja = await dbContext.CajasTurno.FirstOrDefaultAsync(item =>
             item.Fecha == fechaTurno && item.Turno == turno && item.Estado == "Abierta", cancellationToken);
-        if (CajaController.EsEfectivo(request.MetodoPago) && caja is null)
+        if (string.Equals(request.MetodoPago, "Efectivo", StringComparison.OrdinalIgnoreCase) && caja is null)
             return Conflict(new { message = "Debe haber una caja abierta para cobrar en efectivo." });
 
         var pase = new PaseDiario

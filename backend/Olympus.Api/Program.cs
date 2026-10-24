@@ -96,6 +96,12 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("StaffPolicy", policy => policy.RequireRole("Admin", "Profesor"));
 });
 
+var uploadsDirectory = Path.Combine(
+    builder.Environment.WebRootPath ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot"),
+    "uploads",
+    "foro");
+Directory.CreateDirectory(uploadsDirectory);
+
 var app = builder.Build();
 
 // CORS debe ejecutarse antes de routing y autenticación

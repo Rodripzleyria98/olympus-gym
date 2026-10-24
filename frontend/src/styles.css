@@ -101,6 +101,7 @@ textarea { resize: vertical; }
 .news-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin-top: 28px; background: var(--line); border: 1px solid var(--line); }
 .news-item { min-width: 0; background: var(--white); }
 .news-image { display: block; width: 100%; aspect-ratio: 16/8; object-fit: cover; background: #deded5; }
+.news-image-fallback { display: grid; width: 100%; aspect-ratio: 16/8; place-items: center; background: #deded5; color: #404542; font-size: 13px; }
 .news-body { padding: 23px 25px 20px; }
 .news-meta { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 10px; }
 .news-body h2 { margin: 14px 0 9px; font-size: 30px; }

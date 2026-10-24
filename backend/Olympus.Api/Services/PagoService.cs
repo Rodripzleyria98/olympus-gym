@@ -54,6 +54,7 @@ public class PagoService(
         }
 
         var ahora = DateTime.UtcNow;
+        var cajaTurnoId = await ObtenerCajaAbiertaIdAsync(cancellationToken);
         var membresia = new MembresiaUsuario
         {
             Id = Guid.NewGuid(),
@@ -68,6 +69,7 @@ public class PagoService(
             Id = Guid.NewGuid(),
             UsuarioId = usuario.Id,
             MembresiaUsuarioId = membresia.Id,
+            CajaTurnoId = cajaTurnoId,
             Monto = plan.Precio,
             FechaCreacion = ahora,
             MetodoPago = "MercadoPago",
@@ -151,6 +153,7 @@ public class PagoService(
         }
 
         var ahora = DateTime.UtcNow;
+        var cajaTurnoId = await ObtenerCajaAbiertaIdAsync(cancellationToken);
         var periodoMeses = CalcularPeriodoMeses(plan.DuracionDias);
         var membresia = new MembresiaUsuario
         {
@@ -166,6 +169,7 @@ public class PagoService(
             Id = Guid.NewGuid(),
             UsuarioId = usuarioId,
             MembresiaUsuarioId = membresia.Id,
+            CajaTurnoId = cajaTurnoId,
             Monto = plan.Precio,
             FechaCreacion = ahora,
             MetodoPago = "Transferencia",
@@ -220,6 +224,8 @@ public class PagoService(
             if (pago.EstadoPago != EstadoPago.Aprobado)
             {
                 var ahora = DateTime.UtcNow;
+                if (pago.CajaTurnoId is null)
+                    pago.CajaTurnoId = await ObtenerCajaAbiertaIdAsync(cancellationToken);
                 var membresia = pago.MembresiaUsuario;
                 var membresiaActivaHasta = await dbContext.MembresiasUsuario
                     .Where(item => item.UsuarioId == pago.UsuarioId &&
@@ -298,4 +304,13 @@ public class PagoService(
 
     private static int CalcularPeriodoMeses(int duracionDias) =>
         Math.Max(1, (int)Math.Round(duracionDias / 30.0, MidpointRounding.AwayFromZero));
+
+    private async Task<int?> ObtenerCajaAbiertaIdAsync(CancellationToken cancellationToken)
+    {
+        var (fecha, turno) = CajaTurnoHelper.TurnoActual();
+        return await dbContext.CajasTurno
+            .Where(caja => caja.Fecha == fecha && caja.Turno == turno && caja.Estado == "Abierta")
+            .Select(caja => (int?)caja.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
 }

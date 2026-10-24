@@ -125,6 +125,63 @@ public class UsuarioService(OlympusDbContext dbContext) : IUsuarioService
         return new HistorialUsuarioDto(usuario, membresias, pagos);
     }
 
+    public async Task<IReadOnlyList<PagoPendienteAdminDto>> GetPagosPendientesAsync(
+        CancellationToken cancellationToken) =>
+        await dbContext.Pagos.AsNoTracking()
+            .Where(pago => pago.EstadoPago == EstadoPago.Pendiente &&
+                (pago.Usuario.Rol == RolUsuario.Socio || pago.Usuario.Rol == RolUsuario.User))
+            .OrderBy(pago => pago.FechaCreacion)
+            .Select(pago => new PagoPendienteAdminDto(
+                pago.Id,
+                pago.UsuarioId,
+                pago.Usuario.Nombre + " " + pago.Usuario.Apellido,
+                pago.Usuario.Dni,
+                pago.MembresiaUsuario.PlanMembresia.Nombre,
+                pago.FechaCreacion,
+                pago.Monto,
+                pago.MetodoPago,
+                pago.CajaTurnoId,
+                pago.CajaTurno == null ? "Sin caja asignada" : pago.CajaTurno.Turno))
+            .ToListAsync(cancellationToken);
+
+    public async Task<bool> ValidarPagoPendienteAsync(Guid pagoId, CancellationToken cancellationToken)
+    {
+        var pago = await dbContext.Pagos
+            .Include(item => item.MembresiaUsuario)
+            .ThenInclude(item => item.PlanMembresia)
+            .FirstOrDefaultAsync(item => item.Id == pagoId, cancellationToken);
+        if (pago is null || pago.EstadoPago != EstadoPago.Pendiente ||
+            !string.Equals(pago.MetodoPago, "Transferencia", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var ahora = DateTime.UtcNow;
+        var vigenteHasta = await dbContext.MembresiasUsuario
+            .Where(item => item.UsuarioId == pago.UsuarioId &&
+                item.Id != pago.MembresiaUsuarioId &&
+                item.Estado == EstadoMembresia.Vigente &&
+                item.FechaFin >= ahora)
+            .Select(item => (DateTime?)item.FechaFin)
+            .MaxAsync(cancellationToken);
+        var fechaInicio = vigenteHasta is { } fin && fin > ahora ? fin : ahora;
+
+        if (pago.CajaTurnoId is null)
+        {
+            var (fecha, turno) = CajaTurnoHelper.TurnoActual();
+            pago.CajaTurnoId = await dbContext.CajasTurno
+                .Where(caja => caja.Fecha == fecha && caja.Turno == turno && caja.Estado == "Abierta")
+                .Select(caja => (int?)caja.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        pago.EstadoPago = EstadoPago.Aprobado;
+        pago.FechaAcreditacion = ahora;
+        pago.MembresiaUsuario.FechaInicio = fechaInicio;
+        pago.MembresiaUsuario.FechaFin = fechaInicio.AddDays(pago.MembresiaUsuario.PlanMembresia.DuracionDias);
+        pago.MembresiaUsuario.Estado = EstadoMembresia.Vigente;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     public async Task<bool> CambiarEstadoAsync(
         Guid usuarioId,
         CambiarEstadoUsuarioRequestDto request,

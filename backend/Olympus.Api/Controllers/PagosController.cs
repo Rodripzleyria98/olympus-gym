@@ -79,7 +79,7 @@ public class PagosController(
             item.Id == request.PlanMembresiaId && item.IsActivo, cancellationToken);
         if (usuario is null || plan is null) return NotFound();
 
-        var (fechaTurno, turno) = CajaController.TurnoActual();
+        var (fechaTurno, turno) = CajaTurnoHelper.TurnoActual();
         var caja = await dbContext.CajasTurno.FirstOrDefaultAsync(item =>
             item.Fecha == fechaTurno && item.Turno == turno && item.Estado == "Abierta", cancellationToken);
         if (request.MetodoPago == "Efectivo" && caja is null)
