@@ -79,9 +79,9 @@ public class PagosController(
             item.Id == request.PlanMembresiaId && item.IsActivo, cancellationToken);
         if (usuario is null || plan is null) return NotFound();
 
-        var (fechaTurno, turno) = CajaTurnoHelper.TurnoActual();
-        var caja = await dbContext.CajasTurno.FirstOrDefaultAsync(item =>
-            item.Fecha == fechaTurno && item.Turno == turno && item.Estado == "Abierta", cancellationToken);
+        var caja = await dbContext.CajasTurno.OrderByDescending(item => item.FechaHoraApertura.HasValue)
+            .ThenByDescending(item => item.FechaHoraApertura).ThenByDescending(item => item.Id)
+            .FirstOrDefaultAsync(item => item.Estado == "Abierta", cancellationToken);
         if (request.MetodoPago == "Efectivo" && caja is null)
             return Conflict(new { message = "Debe haber una caja abierta para cobrar en efectivo." });
 

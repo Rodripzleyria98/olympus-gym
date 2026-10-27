@@ -9,6 +9,8 @@ public class CajaTurno
     public required string ResponsableTurnoNormalizado { get; set; }
     public Guid UsuarioAperturaId { get; set; }
     public Guid? UsuarioCierreId { get; set; }
+    public DateTime? FechaHoraApertura { get; set; }
+    public DateTime? FechaHoraCierre { get; set; }
     public decimal MontoInicial { get; set; }
     public decimal MontoFinalEfectivoEsperado { get; set; }
     public decimal? MontoFinalEfectivoReal { get; set; }

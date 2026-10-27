@@ -7,15 +7,22 @@ import { API_BASE_URL } from '../../core/api.config';
 import { AuthService } from '../../core/auth.service';
 
 type SeccionOperacion = 'caja' | 'socios' | 'cobros' | 'pases' | 'ventas' | 'stock' | 'historial';
-type TipoOtorgamiento = 'Efectivo' | 'Bonificada';
-
+type MetodoOtorgamiento = 'Efectivo' | 'Transferencia' | 'Bonificada';
 interface CajaTurno {
   id: number;
   fecha: string;
   turno: string;
   responsableTurno: string;
+  usuarioAperturaId: string;
+  usuarioCierreId: string | null;
+  fechaHoraApertura: string | null;
+  fechaHoraCierre: string | null;
   montoInicial: number;
+  montoFinalEfectivoEsperado: number;
   montoFinalEfectivoReal: number | null;
+  diferencia: number | null;
+  totalCobrosEfectivo: number;
+  totalCobrosDigitales: number;
   observaciones: string | null;
   estado: string;
 }
@@ -52,6 +59,16 @@ interface CajaDetalle {
   cobrosMembresia: CajaCobroMembresia[];
   ventas: CajaVenta[];
   pases: CajaPase[];
+  totalesTurno: CajaDiaTotales;
+  totalesDia: CajaDiaTotales;
+}
+
+interface CajaDiaTotales {
+  fecha: string;
+  efectivo: number;
+  transferencias: number;
+  otros: number;
+  total: number;
 }
 
 interface CajaActual {
@@ -63,10 +80,20 @@ interface CajaActual {
 interface Producto {
   id: number;
   nombre: string;
+  sabor: string | null;
+  descripcion: string | null;
+  categoria: string;
   stockActual: number;
   stockMinimo: number;
   precio: number;
   codigo: string | null;
+  isActivo: boolean;
+}
+
+interface SocioCreado {
+  usuarioId: string;
+  nombreCompleto: string;
+  dni: string;
 }
 
 interface Socio {
@@ -124,7 +151,16 @@ interface PlanMembresia {
           @if (cajaActual()?.detalle; as detail) {
             <div class="profile-grid">
               <div class="detail-line"><span>Responsable</span><strong>{{ detail.caja.responsableTurno }}</strong></div>
+              <div class="detail-line"><span>Usuario que abrió</span><strong>{{ detail.caja.usuarioAperturaId }}</strong></div>
+              <div class="detail-line"><span>Apertura</span><strong>{{ detail.caja.fechaHoraApertura | date:'short' }}</strong></div>
               <div class="detail-line"><span>Monto de apertura</span><strong>{{ detail.caja.montoInicial | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+            </div>
+            <h3>Acumulado del día</h3>
+            <div class="profile-grid">
+              <div class="detail-line"><span>Efectivo</span><strong>{{ detail.totalesDia.efectivo | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+              <div class="detail-line"><span>Transferencias</span><strong>{{ detail.totalesDia.transferencias | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+              <div class="detail-line"><span>Otros medios</span><strong>{{ detail.totalesDia.otros | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+              <div class="detail-line"><span>Total del día</span><strong>{{ detail.totalesDia.total | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
             </div>
             <h3>Cobros de membresía del turno</h3>
             <div class="table-wrap"><table class="data-table"><thead><tr><th>Socio</th><th>Plan</th><th>Fecha</th><th>Monto</th><th>Método</th><th>Estado</th></tr></thead><tbody>
@@ -146,16 +182,36 @@ interface PlanMembresia {
             </tbody></table></div>
             <form class="editor-panel" (ngSubmit)="closeCash()">
               <h3>Cerrar caja</h3>
+              <p>Efectivo esperado en este turno: <strong>{{ detail.caja.montoInicial + detail.totalesTurno.efectivo | currency:'ARS':'symbol':'1.0-2' }}</strong></p>
+              <label>Efectivo contado<input type="number" name="cashClosingAmount" min="0" step="0.01" [(ngModel)]="cashClosingAmount" /></label>
               <label>Observaciones (opcional)<textarea name="cashNotes" [(ngModel)]="cashNotes" rows="2" maxlength="2000"></textarea></label>
               <button class="button button-dark" type="submit" [disabled]="busy()">Cerrar turno</button>
             </form>
           } @else {
             <form class="editor-panel" (ngSubmit)="openCash()">
               <h3>Abrir caja · {{ cajaActual()?.turno }}</h3>
+              <label>Turno<select name="cashTurno" [(ngModel)]="cashTurno" required>
+                <option value="Mañana">Mañana · 07:00 a 15:00</option>
+                <option value="Tarde">Tarde · 15:00 a 19:00</option>
+                <option value="Noche">Noche · 19:00 a 22:00</option>
+              </select></label>
               <label>Persona responsable<input name="cashResponsible" [(ngModel)]="responsableTurno" maxlength="150" minlength="2" autocomplete="name" required /></label>
               <label>Monto inicial de caja<input type="number" name="cashOpening" min="0" step="0.01" [(ngModel)]="openingAmount" required /></label>
               <button class="button button-dark" type="submit" [disabled]="busy()">Abrir caja</button>
             </form>
+          }
+          @if (closedShiftDetail(); as closed) {
+            <h3>Resumen del turno cerrado · {{ closed.caja.fechaHoraCierre | date:'short' }}</h3>
+            <p>Usuario que cerró: {{ closed.caja.usuarioCierreId }}</p>
+            <p>Efectivo esperado: {{ closed.caja.montoFinalEfectivoEsperado | currency:'ARS':'symbol':'1.0-2' }}
+              @if (closed.caja.diferencia !== null) { · Diferencia: {{ closed.caja.diferencia | currency:'ARS':'symbol':'1.0-2' }} }
+            </p>
+            <div class="profile-grid">
+              <div class="detail-line"><span>Efectivo del día</span><strong>{{ closed.totalesDia.efectivo | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+              <div class="detail-line"><span>Transferencias del día</span><strong>{{ closed.totalesDia.transferencias | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+              <div class="detail-line"><span>Otros medios del día</span><strong>{{ closed.totalesDia.otros | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+              <div class="detail-line"><span>Total del día</span><strong>{{ closed.totalesDia.total | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+            </div>
           }
         </section>
       }
@@ -176,11 +232,12 @@ interface PlanMembresia {
                 <option [ngValue]="null">Selecciona el plan</option>
                 @for (plan of plans(); track plan.id) { <option [ngValue]="plan.id">{{ plan.nombre }} · {{ plan.duracionDias }} días · {{ plan.precio | currency:'ARS':'symbol':'1.0-2' }}</option> }
               </select></label>
-              <label>Otorgamiento
-                <select name="newMemberGrantType" [(ngModel)]="newMember.tipoOtorgamiento">
-                  <option value="Efectivo">Cobrar en efectivo</option><option value="Bonificada">Otorgar bonificada</option>
-                </select>
-              </label>
+              <label>Fecha de inicio<input type="date" name="newMemberStartDate" [(ngModel)]="newMember.fechaInicio" required /></label>
+              <label>Método de cobro<select name="newMemberGrantType" [(ngModel)]="newMember.tipoOtorgamiento">
+                <option value="Efectivo">Cobrar en efectivo</option>
+                <option value="Transferencia">Transferencia (pendiente de verificación)</option>
+                <option value="Bonificada">Otorgar bonificada</option>
+              </select></label>
               <button class="button button-dark" type="submit" [disabled]="busy() || !newMember.planMembresiaId">Crear socio y asignar plan</button>
             </form>
           </section>
@@ -201,8 +258,11 @@ interface PlanMembresia {
                   <option [ngValue]="null">Selecciona el plan</option>
                   @for (plan of plans(); track plan.id) { <option [ngValue]="plan.id">{{ plan.nombre }} · {{ plan.duracionDias }} días · {{ plan.precio | currency:'ARS':'symbol':'1.0-2' }}</option> }
                 </select></label>
-                <label>Otorgamiento<select name="assignGrantType" [(ngModel)]="membershipGrantType">
-                  <option value="Bonificada">Otorgar bonificada</option><option value="Efectivo">Cobrar en efectivo</option>
+                <label>Fecha de inicio (opcional; por defecto continúa la vigencia actual)<input type="date" name="assignMembershipStartDate" [(ngModel)]="membershipStartDate" /></label>
+                <label>Método de cobro<select name="assignGrantType" [(ngModel)]="membershipGrantType">
+                  <option value="Efectivo">Cobrar en efectivo</option>
+                  <option value="Transferencia">Transferencia (pendiente de verificación)</option>
+                  <option value="Bonificada">Otorgar bonificada</option>
                 </select></label>
                 <button class="button button-dark" type="submit" [disabled]="busy() || !planId">Asignar membresía</button>
               </form>
@@ -276,22 +336,27 @@ interface PlanMembresia {
       @if (activeSection() === 'stock' && auth.isAdmin()) {
         <section class="history-panel">
           <span class="eyebrow">INVENTARIO</span><h2>Productos y stock</h2>
-          <form class="editor-panel" (ngSubmit)="createProduct()">
+          <h3>{{ editingProductId() !== null ? 'Editar producto' : 'Nuevo producto' }}</h3>
+          <form class="editor-panel" (ngSubmit)="saveProduct()">
             <div class="form-row">
-              <label>Nombre<input name="newProductName" [(ngModel)]="newProduct.nombre" required maxlength="200" /></label>
-              <label>Código<input name="newProductCode" [(ngModel)]="newProduct.codigo" maxlength="100" /></label>
+              <label>Nombre<input name="productName" [(ngModel)]="newProduct.nombre" required maxlength="200" /></label>
+              <label>Sabor<input name="productFlavor" [(ngModel)]="newProduct.sabor" maxlength="100" /></label>
+              <label>Categoría<input name="productCategory" [(ngModel)]="newProduct.categoria" required maxlength="100" /></label>
+              <label>Código<input name="productCode" [(ngModel)]="newProduct.codigo" maxlength="100" /></label>
             </div>
+            <label>Descripción<textarea name="productDescription" [(ngModel)]="newProduct.descripcion" rows="2" maxlength="1000"></textarea></label>
             <div class="form-row">
-              <label>Precio<input name="newProductPrice" type="number" min="0.01" step="0.01" [(ngModel)]="newProduct.precio" required /></label>
-              <label>Stock actual<input name="newProductStock" type="number" min="0" [(ngModel)]="newProduct.stockActual" required /></label>
-              <label>Stock mínimo<input name="newProductMinimum" type="number" min="0" [(ngModel)]="newProduct.stockMinimo" required /></label>
+              <label>Precio<input name="productPrice" type="number" min="0.01" step="0.01" [(ngModel)]="newProduct.precio" required /></label>
+              <label>Stock actual<input name="productStock" type="number" min="0" [(ngModel)]="newProduct.stockActual" required /></label>
+              <label>Stock mínimo<input name="productMinimum" type="number" min="0" [(ngModel)]="newProduct.stockMinimo" required /></label>
             </div>
-            <button class="button button-dark" type="submit" [disabled]="busy()">Crear producto</button>
+            <button class="button button-dark" type="submit" [disabled]="busy()">{{ editingProductId() !== null ? 'Guardar cambios' : 'Crear producto' }}</button>
+            @if (editingProductId() !== null) { <button class="button button-quiet" type="button" (click)="cancelEditProduct()">Cancelar</button> }
           </form>
-          <div class="table-wrap"><table class="data-table"><thead><tr><th>Producto</th><th>Stock actual</th><th>Mínimo</th><th>Estado</th><th>Acción</th></tr></thead><tbody>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>Producto</th><th>Sabor / categoría</th><th>Precio</th><th>Stock actual</th><th>Mínimo</th><th>Estado</th><th>Acción</th></tr></thead><tbody>
             @for (product of products(); track product.id) {
-              <tr><td>{{ product.nombre }}</td><td>{{ product.stockActual }}</td><td>{{ product.stockMinimo }}</td><td>{{ product.stockActual <= product.stockMinimo ? 'Stock bajo' : 'Disponible' }}</td><td><button class="text-button" type="button" (click)="adjustStock(product)">Ajustar</button></td></tr>
-            } @empty { <tr><td colspan="5" class="table-empty">No hay productos cargados.</td></tr> }
+              <tr><td>{{ product.nombre }}</td><td>{{ product.sabor || '—' }} · {{ product.categoria }}</td><td>{{ product.precio | currency:'ARS':'symbol':'1.0-2' }}</td><td>{{ product.stockActual }}</td><td>{{ product.stockMinimo }}</td><td>{{ product.stockActual <= product.stockMinimo ? 'Stock bajo' : 'Disponible' }}</td><td><button class="text-button" type="button" (click)="editProduct(product)">Editar</button><button class="text-button" type="button" (click)="adjustStock(product)">Ajustar stock</button><button class="text-button" type="button" (click)="deactivateProduct(product)">Desactivar</button></td></tr>
+            } @empty { <tr><td colspan="7" class="table-empty">No hay productos cargados.</td></tr> }
           </tbody></table></div>
         </section>
       }
@@ -302,13 +367,19 @@ interface PlanMembresia {
             <div><span class="eyebrow">TURNOS CERRADOS</span><h2>Historial de caja</h2></div>
             <div class="form-row"><label>Desde<input type="date" name="historyFrom" [(ngModel)]="historyFrom" /></label><label>Hasta<input type="date" name="historyTo" [(ngModel)]="historyTo" /></label><button class="button button-quiet" type="button" (click)="loadHistory()">Filtrar</button></div>
           </div>
-          <div class="table-wrap"><table class="data-table"><thead><tr><th>Fecha</th><th>Turno</th><th>Responsable</th><th>Monto inicial</th><th>Detalle</th></tr></thead><tbody>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>Turno</th><th>Responsable</th><th>Apertura</th><th>Cierre</th><th>Monto inicial</th><th>Detalle</th></tr></thead><tbody>
             @for (item of history(); track item.id) {
-              <tr><td>{{ item.fecha | date:'d MMM y' }}</td><td>{{ item.turno }}</td><td>{{ item.responsableTurno }}</td><td>{{ item.montoInicial | currency:'ARS':'symbol':'1.0-2' }}</td><td><button class="text-button" type="button" (click)="viewHistoryDetail(item)">Ver movimientos</button></td></tr>
-            } @empty { <tr><td colspan="5" class="table-empty">No hay turnos cerrados en el período seleccionado.</td></tr> }
+              <tr><td>{{ item.turno }} · {{ item.fecha | date:'d MMM y' }}</td><td>{{ item.responsableTurno }}</td><td>{{ item.fechaHoraApertura | date:'short' }}</td><td>{{ item.fechaHoraCierre | date:'short' }}</td><td>{{ item.montoInicial | currency:'ARS':'symbol':'1.0-2' }}</td><td><button class="text-button" type="button" (click)="viewHistoryDetail(item)">Ver movimientos</button></td></tr>
+            } @empty { <tr><td colspan="6" class="table-empty">No hay turnos cerrados en el período seleccionado.</td></tr> }
           </tbody></table></div>
           @if (historyDetail(); as detail) {
             <h3>{{ detail.caja.fecha | date:'d MMM y' }} · Turno {{ detail.caja.turno }} · {{ detail.caja.responsableTurno }}</h3>
+            <div class="profile-grid">
+              <div class="detail-line"><span>Efectivo del día</span><strong>{{ detail.totalesDia.efectivo | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+              <div class="detail-line"><span>Transferencias del día</span><strong>{{ detail.totalesDia.transferencias | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+              <div class="detail-line"><span>Otros medios del día</span><strong>{{ detail.totalesDia.otros | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+              <div class="detail-line"><span>Total acumulado del día</span><strong>{{ detail.totalesDia.total | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+            </div>
             <h4>Ventas</h4>
             <div class="table-wrap"><table class="data-table"><thead><tr><th>Fecha</th><th>Detalle</th><th>Pago</th><th>Total</th></tr></thead><tbody>
               @for (sale of detail.ventas; track sale.id) { <tr><td>{{ sale.fecha | date:'short' }}</td><td>@for (item of sale.items; track $index) { <span>{{ item.cantidad }} × {{ item.producto }}@if (!$last) {, }</span> }</td><td>{{ sale.metodoPago }}</td><td>{{ sale.montoTotal | currency:'ARS':'symbol':'1.0-2' }}</td></tr> }
@@ -335,10 +406,14 @@ export class OperacionesComponent implements OnInit {
   readonly plans = signal<PlanMembresia[]>([]);
   readonly history = signal<CajaTurno[]>([]);
   readonly historyDetail = signal<CajaDetalle | null>(null);
+  readonly closedShiftDetail = signal<CajaDetalle | null>(null);
+  readonly editingProductId = signal<number | null>(null);
   readonly error = signal('');
   readonly notice = signal('');
   readonly busy = signal(false);
   openingAmount = 0;
+  cashTurno = 'Mañana';
+  cashClosingAmount: number | null = null;
   responsableTurno = '';
   cashNotes = '';
   passName = '';
@@ -347,13 +422,17 @@ export class OperacionesComponent implements OnInit {
   memberSearchDni = '';
   memberId = '';
   planId: number | null = null;
-  membershipGrantType: TipoOtorgamiento = 'Bonificada';
   historyFrom = '';
   historyTo = '';
   productId: number | null = null;
   saleQuantity = 1;
   saleMethod = 'Efectivo';
-  newProduct = { nombre: '', codigo: '', precio: 0, stockActual: 0, stockMinimo: 0 };
+  newProduct = {
+    nombre: '', sabor: '', descripcion: '', categoria: '', codigo: '',
+    precio: 0, stockActual: 0, stockMinimo: 0,
+  };
+  membershipGrantType: MetodoOtorgamiento = 'Efectivo';
+  membershipStartDate = '';
   newMember = {
     nombre: '',
     apellido: '',
@@ -361,7 +440,8 @@ export class OperacionesComponent implements OnInit {
     email: '',
     password: '',
     planMembresiaId: null as number | null,
-    tipoOtorgamiento: 'Bonificada' as TipoOtorgamiento,
+    fechaInicio: this.todayDate(),
+    tipoOtorgamiento: 'Efectivo' as MetodoOtorgamiento,
   };
 
   ngOnInit(): void {
@@ -392,7 +472,10 @@ export class OperacionesComponent implements OnInit {
 
   loadCaja(): void {
     this.http.get<CajaActual>(`${API_BASE_URL}/caja/actual`).subscribe({
-      next: caja => this.cajaActual.set(caja),
+      next: caja => {
+        this.cajaActual.set(caja);
+        if (!caja.detalle) this.cashTurno = caja.turno;
+      },
       error: error => this.setError(error),
     });
   }
@@ -407,19 +490,28 @@ export class OperacionesComponent implements OnInit {
   openCash(): void {
     this.runRequest(this.http.post(`${API_BASE_URL}/caja/abrir`, {
       responsableTurno: this.responsableTurno,
+      turno: this.cashTurno,
       montoInicial: this.openingAmount,
     }), 'Caja abierta correctamente.', () => {
       this.responsableTurno = '';
+      this.closedShiftDetail.set(null);
       this.loadCaja();
     });
   }
 
   closeCash(): void {
-    this.runRequest(this.http.post(`${API_BASE_URL}/caja/cerrar`, { observaciones: this.cashNotes }),
-      'Caja cerrada correctamente.', () => {
+    this.runRequest(this.http.post<CajaTurno>(`${API_BASE_URL}/caja/cerrar`, {
+      observaciones: this.cashNotes,
+      montoFinalEfectivoReal: this.cashClosingAmount,
+    }), 'Caja cerrada correctamente.', caja => {
         this.cashNotes = '';
+        this.cashClosingAmount = null;
         this.loadCaja();
         this.loadHistory();
+        this.http.get<CajaDetalle>(`${API_BASE_URL}/caja/${caja.id}/detalle`).subscribe({
+          next: detail => this.closedShiftDetail.set(detail),
+          error: error => this.setError(error),
+        });
       });
   }
 
@@ -443,17 +535,26 @@ export class OperacionesComponent implements OnInit {
       usuarioId: this.memberId,
       planMembresiaId: this.planId,
       tipoOtorgamiento: this.membershipGrantType,
-    }), 'Membresía asignada correctamente.', () => this.clearMemberSearch());
+      fechaInicio: this.membershipStartDate || null,
+    }), 'Membresía asignada correctamente.', () => {
+      this.clearMemberSearch();
+      this.loadCaja();
+    });
   }
 
   createMemberWithPlan(): void {
     if (!this.newMember.planMembresiaId) return;
-    this.runRequest(this.http.post(`${API_BASE_URL}/admin/usuarios/crear-con-membresia`, this.newMember),
-      'Socio registrado y membresía asignada correctamente.', () => {
+    this.runRequest(this.http.post<SocioCreado>(`${API_BASE_URL}/admin/usuarios/crear-con-membresia`, this.newMember),
+      'Socio registrado y membresía asignada correctamente.', socio => {
         this.newMember = {
           nombre: '', apellido: '', dni: '', email: '', password: '',
-          planMembresiaId: null, tipoOtorgamiento: 'Bonificada',
+          planMembresiaId: null,
+          fechaInicio: this.todayDate(),
+          tipoOtorgamiento: 'Efectivo',
         };
+        this.memberSearchDni = socio.dni;
+        this.findMember();
+        this.loadCaja();
       });
   }
 
@@ -493,11 +594,43 @@ export class OperacionesComponent implements OnInit {
     });
   }
 
-  createProduct(): void {
-    this.runRequest(this.http.post(`${API_BASE_URL}/productos`, this.newProduct), 'Producto agregado.', () => {
-      this.newProduct = { nombre: '', codigo: '', precio: 0, stockActual: 0, stockMinimo: 0 };
+  saveProduct(): void {
+    const id = this.editingProductId();
+    const request = id === null
+      ? this.http.post<Producto>(`${API_BASE_URL}/productos`, this.newProduct)
+      : this.http.put<Producto>(`${API_BASE_URL}/productos/${id}`, this.newProduct);
+    this.runRequest(request, id === null ? 'Producto agregado.' : 'Producto actualizado.', () => {
+      this.cancelEditProduct();
       this.loadProducts();
     });
+  }
+
+  editProduct(product: Producto): void {
+    this.editingProductId.set(product.id);
+    this.newProduct = {
+      nombre: product.nombre,
+      sabor: product.sabor ?? '',
+      descripcion: product.descripcion ?? '',
+      categoria: product.categoria,
+      codigo: product.codigo ?? '',
+      precio: product.precio,
+      stockActual: product.stockActual,
+      stockMinimo: product.stockMinimo,
+    };
+  }
+
+  cancelEditProduct(): void {
+    this.editingProductId.set(null);
+    this.newProduct = {
+      nombre: '', sabor: '', descripcion: '', categoria: '', codigo: '',
+      precio: 0, stockActual: 0, stockMinimo: 0,
+    };
+  }
+
+  deactivateProduct(product: Producto): void {
+    if (!window.confirm(`¿Desactivar ${product.nombre}? No aparecerá en el catálogo de ventas.`)) return;
+    this.runRequest(this.http.delete(`${API_BASE_URL}/productos/${product.id}`),
+      'Producto desactivado.', () => this.loadProducts());
   }
 
   adjustStock(product: Producto): void {
@@ -533,16 +666,26 @@ export class OperacionesComponent implements OnInit {
   private clearMemberSearch(): void {
     this.memberId = '';
     this.planId = null;
+    this.membershipStartDate = '';
     this.members.set([]);
     this.memberSearchDni = '';
   }
 
-  private runRequest(request: Observable<unknown>, message: string, success: () => void): void {
+  private todayDate(): string {
+    const localDate = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000);
+    return localDate.toISOString().slice(0, 10);
+  }
+
+  private runRequest<T = unknown>(
+    request: Observable<T>,
+    message: string,
+    success: (response: T) => void = () => undefined,
+  ): void {
     this.busy.set(true);
     this.error.set('');
     this.notice.set('');
     request.subscribe({
-      next: () => { this.notice.set(message); success(); this.busy.set(false); },
+      next: response => { this.notice.set(message); success(response); this.busy.set(false); },
       error: (error: HttpErrorResponse) => { this.setError(error); this.busy.set(false); },
     });
   }

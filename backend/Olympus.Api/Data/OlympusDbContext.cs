@@ -160,8 +160,12 @@ public class OlympusDbContext(DbContextOptions<OlympusDbContext> options) : DbCo
         {
             entity.HasKey(producto => producto.Id);
             entity.Property(producto => producto.Nombre).HasMaxLength(200).IsRequired();
+            entity.Property(producto => producto.Sabor).HasMaxLength(100);
+            entity.Property(producto => producto.Descripcion).HasMaxLength(1000);
+            entity.Property(producto => producto.Categoria).HasMaxLength(100).IsRequired();
             entity.Property(producto => producto.Precio).HasPrecision(12, 2);
             entity.Property(producto => producto.Codigo).HasMaxLength(100);
+            entity.Property(producto => producto.IsActivo).HasDefaultValue(true);
             entity.HasIndex(producto => producto.Codigo).IsUnique();
         });
 

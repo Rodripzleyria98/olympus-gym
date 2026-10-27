@@ -40,12 +40,14 @@ Accept: application/json
 GET {{Olympus.Api_HostAddress}}/api/pases-diarios/1
 Authorization: Bearer {{token}}
 
-### Open current shift (admin)
+### Open a manually selected shift (admin)
 POST {{Olympus.Api_HostAddress}}/api/caja/abrir
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
+  "turno": "Mañana",
+  "responsableTurno": "Responsable de turno",
   "montoInicial": 50000
 }
 
@@ -53,13 +55,14 @@ Content-Type: application/json
 GET {{Olympus.Api_HostAddress}}/api/caja/actual
 Authorization: Bearer {{token}}
 
-### Close current shift (admin)
+### Close current shift and record the cash count (admin)
 POST {{Olympus.Api_HostAddress}}/api/caja/cerrar
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "observaciones": "Arqueo de cierre"
+  "observaciones": "Arqueo de cierre",
+  "montoFinalEfectivoReal": 75000
 }
 
 ### Closed shift report (admin)
@@ -70,7 +73,7 @@ Authorization: Bearer {{token}}
 GET {{Olympus.Api_HostAddress}}/api/caja/{{cajaId}}/detalle
 Authorization: Bearer {{token}}
 
-### Assign a complimentary membership to an existing member (admin)
+### Assign a paid membership to an existing member (admin)
 POST {{Olympus.Api_HostAddress}}/api/admin/membresias/asignar
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -78,10 +81,11 @@ Content-Type: application/json
 {
   "usuarioId": "{{socioId}}",
   "planMembresiaId": {{planId}},
-  "tipoOtorgamiento": "Bonificada"
+  "tipoOtorgamiento": "Transferencia",
+  "fechaInicio": "2026-10-27"
 }
 
-### Register a new member and assign a complimentary plan (admin)
+### Register a new member and assign a paid plan (admin)
 POST {{Olympus.Api_HostAddress}}/api/admin/usuarios/crear-con-membresia
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -93,7 +97,8 @@ Content-Type: application/json
   "email": "ana.ejemplo@example.com",
   "password": "GymPass!2026",
   "planMembresiaId": {{planId}},
-  "tipoOtorgamiento": "Bonificada"
+  "tipoOtorgamiento": "Efectivo",
+  "fechaInicio": "2026-10-27"
 }
 
 ### Product catalog (admin or professor)
@@ -107,11 +112,38 @@ Content-Type: application/json
 
 {
   "nombre": "Agua",
+  "sabor": "Sin gas",
+  "descripcion": "Botella de 500 ml",
+  "categoria": "Bebidas",
   "stockActual": 20,
   "stockMinimo": 5,
   "precio": 1500,
   "codigo": "AGUA-001"
 }
+
+### Read an active product (admin or professor)
+GET {{Olympus.Api_HostAddress}}/api/productos/{{productoId}}
+Authorization: ******
+
+### Update product details and inventory (admin)
+PUT {{Olympus.Api_HostAddress}}/api/productos/{{productoId}}
+Authorization: ******
+Content-Type: application/json
+
+{
+  "nombre": "Agua mineral",
+  "sabor": "Sin gas",
+  "descripcion": "Botella de 500 ml",
+  "categoria": "Bebidas",
+  "stockActual": 25,
+  "stockMinimo": 5,
+  "precio": 1500,
+  "codigo": "AGUA-001"
+}
+
+### Deactivate a product without deleting its sales history (admin)
+DELETE {{Olympus.Api_HostAddress}}/api/productos/{{productoId}}
+Authorization: ******
 
 ### Adjust stock (admin)
 PUT {{Olympus.Api_HostAddress}}/api/productos/{{productoId}}/stock

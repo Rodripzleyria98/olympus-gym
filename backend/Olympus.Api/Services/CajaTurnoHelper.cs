@@ -4,12 +4,16 @@ internal static class CajaTurnoHelper
 {
     internal static (DateTime Fecha, string Turno) TurnoActual()
     {
-        var zoneId = OperatingSystem.IsWindows()
-            ? "Argentina Standard Time"
-            : "America/Argentina/Buenos_Aires";
-        var local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById(zoneId));
-        var turno = local.Hour < 6 ? "Noche" : local.Hour < 14 ? "Mañana" : local.Hour < 22 ? "Tarde" : "Noche";
-        var fechaTurno = local.Hour < 6 ? local.Date.AddDays(-1) : local.Date;
-        return (DateTime.SpecifyKind(fechaTurno, DateTimeKind.Utc), turno);
+        var local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, ArgentinaTimeZone());
+        var turno = local.Hour < 15 ? "Mañana" : local.Hour < 19 ? "Tarde" : "Noche";
+        return (DateTime.SpecifyKind(local.Date, DateTimeKind.Utc), turno);
     }
+
+    internal static DateTime FechaLocalAUtc(DateOnly fecha) =>
+        TimeZoneInfo.ConvertTimeToUtc(
+            fecha.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified),
+            ArgentinaTimeZone());
+
+    private static TimeZoneInfo ArgentinaTimeZone() => TimeZoneInfo.FindSystemTimeZoneById(
+        OperatingSystem.IsWindows() ? "Argentina Standard Time" : "America/Argentina/Buenos_Aires");
 }

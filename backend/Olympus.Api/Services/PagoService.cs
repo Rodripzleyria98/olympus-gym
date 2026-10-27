@@ -55,13 +55,14 @@ public class PagoService(
 
         var ahora = DateTime.UtcNow;
         var cajaTurnoId = await ObtenerCajaAbiertaIdAsync(cancellationToken);
+        var fechaInicio = await ObtenerFechaInicioMembresiaAsync(usuario.Id, ahora, cancellationToken);
         var membresia = new MembresiaUsuario
         {
             Id = Guid.NewGuid(),
             UsuarioId = usuario.Id,
             PlanMembresiaId = plan.Id,
-            FechaInicio = ahora,
-            FechaFin = ahora.AddMonths(CalcularPeriodoMeses(plan.DuracionDias)),
+            FechaInicio = fechaInicio,
+            FechaFin = fechaInicio.AddDays(plan.DuracionDias),
             Estado = EstadoMembresia.Pendiente
         };
         var pago = new Pago
@@ -155,13 +156,14 @@ public class PagoService(
         var ahora = DateTime.UtcNow;
         var cajaTurnoId = await ObtenerCajaAbiertaIdAsync(cancellationToken);
         var periodoMeses = CalcularPeriodoMeses(plan.DuracionDias);
+        var fechaInicio = await ObtenerFechaInicioMembresiaAsync(usuarioId, ahora, cancellationToken);
         var membresia = new MembresiaUsuario
         {
             Id = Guid.NewGuid(),
             UsuarioId = usuarioId,
             PlanMembresiaId = plan.Id,
-            FechaInicio = ahora,
-            FechaFin = ahora.AddMonths(periodoMeses),
+            FechaInicio = fechaInicio,
+            FechaFin = fechaInicio.AddDays(plan.DuracionDias),
             Estado = EstadoMembresia.Pendiente
         };
         var pago = new Pago
@@ -307,10 +309,24 @@ public class PagoService(
 
     private async Task<int?> ObtenerCajaAbiertaIdAsync(CancellationToken cancellationToken)
     {
-        var (fecha, turno) = CajaTurnoHelper.TurnoActual();
         return await dbContext.CajasTurno
-            .Where(caja => caja.Fecha == fecha && caja.Turno == turno && caja.Estado == "Abierta")
+            .Where(caja => caja.Estado == "Abierta")
+            .OrderByDescending(caja => caja.FechaHoraApertura.HasValue)
+            .ThenByDescending(caja => caja.FechaHoraApertura).ThenByDescending(caja => caja.Id)
             .Select(caja => (int?)caja.Id)
             .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task<DateTime> ObtenerFechaInicioMembresiaAsync(
+        Guid usuarioId,
+        DateTime ahora,
+        CancellationToken cancellationToken)
+    {
+        var fechaFinVigente = await dbContext.MembresiasUsuario
+            .Where(item => item.UsuarioId == usuarioId &&
+                item.Estado == EstadoMembresia.Vigente && item.FechaFin >= ahora)
+            .Select(item => (DateTime?)item.FechaFin)
+            .MaxAsync(cancellationToken);
+        return fechaFinVigente is { } fin && fin > ahora ? fin : ahora;
     }
 }

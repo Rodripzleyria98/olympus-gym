@@ -42,6 +42,12 @@ namespace Olympus.Api.Migrations
                     b.Property<DateTime>("Fecha")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("FechaHoraApertura")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("FechaHoraCierre")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<decimal>("MontoFinalEfectivoEsperado")
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
@@ -89,13 +95,13 @@ namespace Olympus.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UsuarioAperturaId");
-
-                    b.HasIndex("UsuarioCierreId");
-
                     b.HasIndex("Fecha", "Turno")
                         .IsUnique()
                         .HasFilter("\"Estado\" = 'Abierta'");
+
+                    b.HasIndex("UsuarioAperturaId");
+
+                    b.HasIndex("UsuarioCierreId");
 
                     b.ToTable("CajasTurno");
                 });
@@ -2269,9 +2275,23 @@ namespace Olympus.Api.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("Categoria")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("Codigo")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Descripcion")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<bool>("IsActivo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
 
                     b.Property<string>("Nombre")
                         .IsRequired()
@@ -2281,6 +2301,10 @@ namespace Olympus.Api.Migrations
                     b.Property<decimal>("Precio")
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
+
+                    b.Property<string>("Sabor")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<int>("StockActual")
                         .HasColumnType("integer");

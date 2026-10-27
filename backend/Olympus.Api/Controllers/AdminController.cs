@@ -31,13 +31,14 @@ public class AdminController(
             item.Id == request.PlanMembresiaId && item.IsActivo, cancellationToken);
         if (plan is null) return NotFound(new { message = "No se encontró el plan activo." });
 
-        var caja = request.TipoOtorgamiento == "Efectivo"
-            ? await ObtenerCajaAbiertaAsync(cancellationToken)
-            : null;
-        if (request.TipoOtorgamiento == "Efectivo" && caja is null)
+        var caja = request.TipoOtorgamiento == "Bonificada"
+            ? null
+            : await ObtenerCajaAbiertaAsync(cancellationToken);
+        if (request.TipoOtorgamiento != "Bonificada" && caja is null)
             return Conflict(new { message = "Debe haber una caja abierta para registrar el cobro en efectivo." });
 
-        var response = await CrearMembresiaAsync(usuario, plan, request.TipoOtorgamiento, caja, cancellationToken);
+        var response = await CrearMembresiaAsync(
+            usuario, plan, request.TipoOtorgamiento, request.FechaInicio, caja, cancellationToken);
         return Ok(response);
     }
 
@@ -57,10 +58,10 @@ public class AdminController(
             item.Id == request.PlanMembresiaId && item.IsActivo, cancellationToken);
         if (plan is null) return NotFound(new { message = "No se encontró el plan activo." });
 
-        var caja = request.TipoOtorgamiento == "Efectivo"
-            ? await ObtenerCajaAbiertaAsync(cancellationToken)
-            : null;
-        if (request.TipoOtorgamiento == "Efectivo" && caja is null)
+        var caja = request.TipoOtorgamiento == "Bonificada"
+            ? null
+            : await ObtenerCajaAbiertaAsync(cancellationToken);
+        if (request.TipoOtorgamiento != "Bonificada" && caja is null)
             return Conflict(new { message = "Debe haber una caja abierta para registrar el cobro en efectivo." });
 
         var usuario = new Usuario
@@ -78,7 +79,8 @@ public class AdminController(
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {
-            var response = await CrearMembresiaAsync(usuario, plan, request.TipoOtorgamiento, caja, cancellationToken);
+            var response = await CrearMembresiaAsync(
+                usuario, plan, request.TipoOtorgamiento, request.FechaInicio, caja, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return CreatedAtAction(nameof(GetHistorial), new { id = usuario.Id }, response);
         }
@@ -210,15 +212,16 @@ public class AdminController(
 
     private async Task<CajaTurno?> ObtenerCajaAbiertaAsync(CancellationToken cancellationToken)
     {
-        var (fecha, turno) = CajaTurnoHelper.TurnoActual();
-        return await dbContext.CajasTurno.FirstOrDefaultAsync(caja =>
-            caja.Fecha == fecha && caja.Turno == turno && caja.Estado == "Abierta", cancellationToken);
+        return await dbContext.CajasTurno.OrderByDescending(caja => caja.FechaHoraApertura.HasValue)
+            .ThenByDescending(caja => caja.FechaHoraApertura).ThenByDescending(caja => caja.Id)
+            .FirstOrDefaultAsync(caja => caja.Estado == "Abierta", cancellationToken);
     }
 
     private async Task<SocioConMembresiaAdminResponseDto> CrearMembresiaAsync(
         Usuario usuario,
         PlanMembresia plan,
         string tipoOtorgamiento,
+        DateOnly? fechaInicioPersonalizada,
         CajaTurno? caja,
         CancellationToken cancellationToken)
     {
@@ -228,7 +231,9 @@ public class AdminController(
                 item.Estado == EstadoMembresia.Vigente && item.FechaFin >= ahora)
             .Select(item => (DateTime?)item.FechaFin)
             .MaxAsync(cancellationToken);
-        var inicio = fechaFinVigente is { } fin && fin > ahora ? fin : ahora;
+        var inicio = fechaInicioPersonalizada is { } fechaPersonalizada
+            ? CajaTurnoHelper.FechaLocalAUtc(fechaPersonalizada)
+            : (fechaFinVigente is { } fin && fin > ahora ? fin : ahora);
         var membresia = new MembresiaUsuario
         {
             Id = Guid.NewGuid(),
@@ -236,11 +241,11 @@ public class AdminController(
             PlanMembresiaId = plan.Id,
             FechaInicio = inicio,
             FechaFin = inicio.AddDays(plan.DuracionDias),
-            Estado = EstadoMembresia.Vigente
+            Estado = tipoOtorgamiento == "Transferencia" ? EstadoMembresia.Pendiente : EstadoMembresia.Vigente
         };
         dbContext.MembresiasUsuario.Add(membresia);
 
-        if (tipoOtorgamiento == "Efectivo")
+        if (tipoOtorgamiento is "Efectivo" or "Transferencia")
         {
             dbContext.Pagos.Add(new Pago
             {
@@ -250,10 +255,10 @@ public class AdminController(
                 CajaTurnoId = caja!.Id,
                 Monto = plan.Precio,
                 FechaCreacion = ahora,
-                FechaAcreditacion = ahora,
-                MetodoPago = "Efectivo",
+                FechaAcreditacion = tipoOtorgamiento == "Efectivo" ? ahora : null,
+                MetodoPago = tipoOtorgamiento,
                 PeriodoMeses = Math.Max(1, (int)Math.Round(plan.DuracionDias / 30.0, MidpointRounding.AwayFromZero)),
-                EstadoPago = EstadoPago.Aprobado
+                EstadoPago = tipoOtorgamiento == "Efectivo" ? EstadoPago.Aprobado : EstadoPago.Pendiente
             });
         }
 

@@ -197,7 +197,16 @@ public class ActualizarPerfilRequestDto
 
 public record CajaTurnoDto(
     int Id, DateTime Fecha, string Turno, string ResponsableTurno, Guid UsuarioAperturaId, Guid? UsuarioCierreId,
-    decimal MontoInicial, decimal? MontoFinalEfectivoReal, string? Observaciones, string Estado);
+    DateTime? FechaHoraApertura, DateTime? FechaHoraCierre, decimal MontoInicial, decimal MontoFinalEfectivoEsperado,
+    decimal? MontoFinalEfectivoReal, decimal? Diferencia, decimal TotalCobrosEfectivo, decimal TotalCobrosDigitales,
+    string? Observaciones, string Estado);
+
+public record CajaDiaTotalesDto(
+    DateTime Fecha,
+    decimal Efectivo,
+    decimal Transferencias,
+    decimal Otros,
+    decimal Total);
 
 public record CajaVentaItemDto(string Producto, int Cantidad, decimal PrecioUnitario);
 
@@ -241,7 +250,9 @@ public record CajaDetalleDto(
     CajaTurnoDto Caja,
     IReadOnlyList<CajaPagoMembresiaDto> CobrosMembresia,
     IReadOnlyList<CajaVentaDto> Ventas,
-    IReadOnlyList<CajaPaseDto> Pases);
+    IReadOnlyList<CajaPaseDto> Pases,
+    CajaDiaTotalesDto TotalesTurno,
+    CajaDiaTotalesDto TotalesDia);
 
 public record CajaActualDto(
     DateTime Fecha,
@@ -253,6 +264,9 @@ public class AbrirCajaRequestDto
     [Required, StringLength(150, MinimumLength = 2)]
     public string ResponsableTurno { get; set; } = string.Empty;
 
+    [Required, RegularExpression("^(Mañana|Tarde|Noche)$")]
+    public string Turno { get; set; } = string.Empty;
+
     [Range(typeof(decimal), "0", "999999999.99")]
     public decimal MontoInicial { get; set; }
 }
@@ -261,6 +275,9 @@ public class CerrarCajaRequestDto
 {
     [StringLength(2000)]
     public string? Observaciones { get; set; }
+
+    [Range(typeof(decimal), "0", "999999999.99")]
+    public decimal? MontoFinalEfectivoReal { get; set; }
 }
 
 public class AsignarMembresiaAdminRequestDto
@@ -269,8 +286,10 @@ public class AsignarMembresiaAdminRequestDto
     public Guid UsuarioId { get; set; }
     [Range(1, int.MaxValue)]
     public int PlanMembresiaId { get; set; }
-    [Required, RegularExpression("^(Efectivo|Bonificada)$")]
-    public string TipoOtorgamiento { get; set; } = "Bonificada";
+    [Required, RegularExpression("^(Efectivo|Transferencia|Bonificada)$")]
+    public string TipoOtorgamiento { get; set; } = "Efectivo";
+
+    public DateOnly? FechaInicio { get; set; }
 }
 
 public class RegistrarSocioConMembresiaRequestDto
@@ -289,8 +308,10 @@ public class RegistrarSocioConMembresiaRequestDto
     public string Password { get; set; } = string.Empty;
     [Range(1, int.MaxValue)]
     public int PlanMembresiaId { get; set; }
-    [Required, RegularExpression("^(Efectivo|Bonificada)$")]
-    public string TipoOtorgamiento { get; set; } = "Bonificada";
+    [Required, RegularExpression("^(Efectivo|Transferencia|Bonificada)$")]
+    public string TipoOtorgamiento { get; set; } = "Efectivo";
+
+    public DateOnly? FechaInicio { get; set; }
 }
 
 public record SocioConMembresiaAdminResponseDto(
@@ -302,12 +323,20 @@ public record SocioConMembresiaAdminResponseDto(
     DateTime FechaFin,
     string TipoOtorgamiento);
 
-public record ProductoDto(int Id, string Nombre, int StockActual, int StockMinimo, decimal Precio, string? Codigo);
+public record ProductoDto(
+    int Id, string Nombre, string? Sabor, string? Descripcion, string Categoria,
+    int StockActual, int StockMinimo, decimal Precio, string? Codigo, bool IsActivo);
 
 public class CrearProductoRequestDto
 {
     [Required, StringLength(200)]
     public string Nombre { get; set; } = string.Empty;
+    [StringLength(100)]
+    public string? Sabor { get; set; }
+    [StringLength(1000)]
+    public string? Descripcion { get; set; }
+    [Required, StringLength(100)]
+    public string Categoria { get; set; } = string.Empty;
     [Range(0, int.MaxValue)]
     public int StockActual { get; set; }
     [Range(0, int.MaxValue)]
@@ -316,6 +345,10 @@ public class CrearProductoRequestDto
     public decimal Precio { get; set; }
     [StringLength(100)]
     public string? Codigo { get; set; }
+}
+
+public class ActualizarProductoRequestDto : CrearProductoRequestDto
+{
 }
 
 public class AjustarStockRequestDto

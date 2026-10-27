@@ -6,6 +6,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { debounceTime, distinctUntilChanged, Subject, switchMap } from 'rxjs';
 import { API_BASE_URL } from '../../core/api.config';
 import { normalizePagedResponse, PagedResponse } from '../../core/paged-response';
+import { parseRoutineText } from './routine-text-parser';
 
 export interface SocioRutina {
   id: string;
@@ -27,6 +28,12 @@ interface DiaPlantilla {
   orden: number;
   enfoque: string;
   ejercicios: EjercicioPlantilla[];
+}
+
+interface RoutineDayInput {
+  nombreDia: string;
+  enfoque: string;
+  ejercicios: Array<Pick<EjercicioPlantilla, 'nombre' | 'seriesYRepeticiones' | 'notas'>>;
 }
 
 interface PlantillaRutina {
@@ -62,6 +69,8 @@ interface PlantillaRutina {
           </select>
         </label>
 
+        <button class="button button-quiet" type="button" (click)="importModalOpen.set(true)">Importar / Pegar desde texto</button>
+
         <form [formGroup]="form" (ngSubmit)="save()">
           <div class="routine-form-top">
             <label>Título<input formControlName="titulo" maxlength="200" placeholder="Plan de entrenamiento" /></label>
@@ -73,7 +82,7 @@ interface PlantillaRutina {
           <div class="routine-days-list" formArrayName="dias">
             @for (day of dias.controls; track $index; let dayIndex = $index) {
               <section class="routine-edit-day" [formGroupName]="dayIndex">
-                <div class="routine-edit-day-heading"><span class="routine-edit-day-number">DÍA {{ (dayIndex + 1).toString().padStart(2, '0') }}</span><button class="routine-remove-button" type="button" (click)="removeDay(dayIndex)">Eliminar día</button></div>
+                <div class="routine-edit-day-heading"><span class="routine-edit-day-number">DÍA {{ (dayIndex + 1).toString().padStart(2, '0') }}</span><div><button class="text-button" type="button" [disabled]="dayIndex === 0" (click)="moveDay(dayIndex, -1)">Subir día</button><button class="text-button" type="button" [disabled]="dayIndex === dias.length - 1" (click)="moveDay(dayIndex, 1)">Bajar día</button><button class="routine-remove-button" type="button" (click)="removeDay(dayIndex)">Eliminar día</button></div></div>
                 <div class="routine-day-fields"><label>Día<input formControlName="nombreDia" placeholder="LUNES o DÍA 1" maxlength="30" /></label><label>Enfoque / Grupo muscular<input formControlName="enfoque" placeholder="Pecho + Tríceps" maxlength="150" /></label></div>
                 <div class="routine-exercises-list" formArrayName="ejercicios">
                   @for (exercise of exercisesAt(dayIndex).controls; track $index; let exerciseIndex = $index) {
@@ -81,7 +90,7 @@ interface PlantillaRutina {
                       <label>Ejercicio<input formControlName="nombre" placeholder="Press banca con barra" maxlength="200" /></label>
                       <label>Series × reps<input formControlName="seriesYRepeticiones" placeholder="4x6-8" maxlength="50" /></label>
                       <label>Notas<input formControlName="notas" placeholder="Calentamiento (opcional)" maxlength="500" /></label>
-                      <button class="routine-remove-button exercise-remove" type="button" (click)="removeExercise(dayIndex, exerciseIndex)" aria-label="Eliminar ejercicio">×</button>
+                      <div><button class="text-button" type="button" [disabled]="exerciseIndex === 0" (click)="moveExercise(dayIndex, exerciseIndex, -1)">↑</button><button class="text-button" type="button" [disabled]="exerciseIndex === exercisesAt(dayIndex).length - 1" (click)="moveExercise(dayIndex, exerciseIndex, 1)">↓</button><button class="routine-remove-button exercise-remove" type="button" (click)="removeExercise(dayIndex, exerciseIndex)" aria-label="Eliminar ejercicio">×</button></div>
                     </div>
                   }
                 </div>
@@ -93,6 +102,24 @@ interface PlantillaRutina {
           @if (errorMessage()) { <p class="form-error" role="alert">{{ errorMessage() }}</p> }
           <footer class="routine-modal-footer"><button class="button button-quiet" type="button" (click)="close.emit()">Cancelar</button><button class="button button-neon" type="submit" [disabled]="saving() || form.invalid || !selectedMemberId()">{{ saving() ? 'Guardando…' : 'Guardar y Asignar Rutina' }}</button></footer>
         </form>
+
+        @if (importModalOpen()) {
+          <div class="modal-backdrop" (click)="importModalOpen.set(false)" (keydown.escape)="importModalOpen.set(false)">
+            <section class="routine-assignment-modal" role="dialog" aria-modal="true" aria-labelledby="routine-import-title" (click)="$event.stopPropagation()">
+              <header class="routine-modal-header">
+                <div><span class="eyebrow">CARGA RÁPIDA</span><h2 id="routine-import-title">Importar rutina desde texto</h2><p>Pega la rutina completa. Se reconocerán días, ejercicios, series, repeticiones y notas.</p></div>
+                <button class="modal-close" type="button" aria-label="Cerrar importador" (click)="importModalOpen.set(false)">×</button>
+              </header>
+              <label>Rutina<textarea name="routineText" [(ngModel)]="routineText" [ngModelOptions]="{ standalone: true }" rows="14" placeholder="Día 1 — Pecho, hombros y tríceps&#10;1. Press de banca con barra — 4 x 6-8&#10;2. Press inclinado con mancuernas — 3 x 8-10&#10;&#10;Día 2 — Piernas A&#10;1. Sentadilla con barra — 4 x 6-8"></textarea></label>
+              <p class="muted">Formato flexible: encabezados “Día 1”, “Lunes”, etc. Las líneas sin series/repeticiones también se importan como nombre del ejercicio para que puedas completarlas.</p>
+              @if (importMessage()) { <p [class.form-error]="importHasErrors()" role="status">{{ importMessage() }}</p> }
+              <footer class="routine-modal-footer">
+                <button class="button button-quiet" type="button" (click)="importModalOpen.set(false)">Cancelar</button>
+                <button class="button button-neon" type="button" (click)="parseRoutineText()">Procesar y Cargar</button>
+              </footer>
+            </section>
+          </div>
+        }
       </section>
     </div>
   `,
@@ -113,7 +140,12 @@ export class AsignarRutinaModalComponent implements OnInit {
   readonly templates = signal<PlantillaRutina[]>([]);
   readonly selectedTemplate = signal('');
   readonly errorMessage = signal('');
+  readonly importMessage = signal('');
+  readonly importHasErrors = signal(false);
+  readonly importModalOpen = signal(false);
   readonly saving = signal(false);
+  pasteTargetDay = 0;
+  routineText = '';
   readonly form = this.formBuilder.group({
     titulo: ['', [Validators.required, Validators.maxLength(200)]],
     fechaInicio: [new Date().toISOString().slice(0, 10), Validators.required],
@@ -186,16 +218,25 @@ export class AsignarRutinaModalComponent implements OnInit {
     return this.dias.at(dayIndex).get('ejercicios') as FormArray;
   }
 
-  addDay(day?: DiaPlantilla): void {
+  addDay(day?: RoutineDayInput): void {
     this.dias.push(this.formBuilder.group({
-      nombreDia: [day?.nombreDia ?? '', Validators.required],
-      enfoque: [day?.enfoque ?? '', Validators.required],
+      nombreDia: [day?.nombreDia ?? '', [Validators.required, Validators.maxLength(30)]],
+      enfoque: [day?.enfoque ?? '', [Validators.required, Validators.maxLength(150)]],
       ejercicios: this.formBuilder.array((day?.ejercicios ?? []).map(exercise => this.createExercise(exercise))),
     }));
   }
 
   removeDay(index: number): void {
     this.dias.removeAt(index);
+    if (this.pasteTargetDay >= this.dias.length) this.pasteTargetDay = Math.max(0, this.dias.length - 1);
+  }
+
+  moveDay(index: number, offset: -1 | 1): void {
+    const targetIndex = index + offset;
+    if (targetIndex < 0 || targetIndex >= this.dias.length) return;
+    const day = this.dias.at(index);
+    this.dias.removeAt(index);
+    this.dias.insert(targetIndex, day);
   }
 
   addExercise(dayIndex: number): void {
@@ -206,9 +247,46 @@ export class AsignarRutinaModalComponent implements OnInit {
     this.exercisesAt(dayIndex).removeAt(exerciseIndex);
   }
 
+  moveExercise(dayIndex: number, exerciseIndex: number, offset: -1 | 1): void {
+    const exercises = this.exercisesAt(dayIndex);
+    const targetIndex = exerciseIndex + offset;
+    if (targetIndex < 0 || targetIndex >= exercises.length) return;
+    const exercise = exercises.at(exerciseIndex);
+    exercises.removeAt(exerciseIndex);
+    exercises.insert(targetIndex, exercise);
+  }
+
+  parseRoutineText(): void {
+    const parsedDays = parseRoutineText(this.routineText);
+    if (!parsedDays.length) {
+      this.importMessage.set('Pega al menos una línea con un ejercicio.');
+      this.importHasErrors.set(true);
+      return;
+    }
+    if (parsedDays.length > 7) {
+      this.importMessage.set('La rutina admite hasta 7 días. Reduce los encabezados de día antes de importar.');
+      this.importHasErrors.set(true);
+      return;
+    }
+
+    this.dias.clear();
+    parsedDays.forEach(day => this.addDay(day));
+    const exerciseCount = parsedDays.reduce((count, day) => count + day.ejercicios.length, 0);
+    const unparsedCount = parsedDays.reduce(
+      (count, day) => count + day.ejercicios.filter(exercise => !exercise.seriesYRepeticiones).length,
+      0,
+    );
+    this.selectedTemplate.set('');
+    this.importHasErrors.set(unparsedCount > 0);
+    this.importMessage.set(`Se cargaron ${parsedDays.length} día(s) y ${exerciseCount} ejercicio(s).` +
+      (unparsedCount ? ` Completa las series y repeticiones de ${unparsedCount} ejercicio(s) marcados.` : ''));
+    this.importModalOpen.set(false);
+  }
+
   selectTemplate(value: string): void {
     this.selectedTemplate.set(value);
     this.errorMessage.set('');
+    this.importMessage.set('');
     const template = value === '' ? null : this.templates()[Number(value)];
     this.dias.clear();
     if (!template) {
@@ -268,16 +346,21 @@ export class AsignarRutinaModalComponent implements OnInit {
     });
   }
 
-  private createExercise(exercise?: EjercicioPlantilla) {
+  private createExercise(exercise?: Pick<EjercicioPlantilla, 'nombre' | 'seriesYRepeticiones' | 'notas'>) {
     return this.formBuilder.group({
-      nombre: [exercise?.nombre ?? '', Validators.required],
-      seriesYRepeticiones: [exercise?.seriesYRepeticiones ?? '', Validators.required],
-      notas: [exercise?.notas ?? ''],
+      nombre: [exercise?.nombre ?? '', [Validators.required, Validators.maxLength(200)]],
+      seriesYRepeticiones: [exercise?.seriesYRepeticiones ?? '', [Validators.required, Validators.maxLength(50)]],
+      notas: [exercise?.notas ?? '', Validators.maxLength(500)],
     });
   }
 
   private resetRoutineForm(): void {
     this.selectedTemplate.set('');
+    this.routineText = '';
+    this.importMessage.set('');
+    this.importHasErrors.set(false);
+    this.importModalOpen.set(false);
+    this.pasteTargetDay = 0;
     this.form.patchValue({ titulo: '', fechaInicio: new Date().toISOString().slice(0, 10), fechaRevision: '' });
     this.dias.clear();
     this.addDay();

@@ -155,28 +155,21 @@ public class UsuarioService(OlympusDbContext dbContext) : IUsuarioService
             return false;
 
         var ahora = DateTime.UtcNow;
-        var vigenteHasta = await dbContext.MembresiasUsuario
-            .Where(item => item.UsuarioId == pago.UsuarioId &&
-                item.Id != pago.MembresiaUsuarioId &&
-                item.Estado == EstadoMembresia.Vigente &&
-                item.FechaFin >= ahora)
-            .Select(item => (DateTime?)item.FechaFin)
-            .MaxAsync(cancellationToken);
-        var fechaInicio = vigenteHasta is { } fin && fin > ahora ? fin : ahora;
 
         if (pago.CajaTurnoId is null)
         {
-            var (fecha, turno) = CajaTurnoHelper.TurnoActual();
             pago.CajaTurnoId = await dbContext.CajasTurno
-                .Where(caja => caja.Fecha == fecha && caja.Turno == turno && caja.Estado == "Abierta")
+                .Where(caja => caja.Estado == "Abierta")
+                .OrderByDescending(caja => caja.FechaHoraApertura.HasValue)
+                .ThenByDescending(caja => caja.FechaHoraApertura).ThenByDescending(caja => caja.Id)
                 .Select(caja => (int?)caja.Id)
                 .FirstOrDefaultAsync(cancellationToken);
         }
 
         pago.EstadoPago = EstadoPago.Aprobado;
         pago.FechaAcreditacion = ahora;
-        pago.MembresiaUsuario.FechaInicio = fechaInicio;
-        pago.MembresiaUsuario.FechaFin = fechaInicio.AddDays(pago.MembresiaUsuario.PlanMembresia.DuracionDias);
+        pago.MembresiaUsuario.FechaFin = pago.MembresiaUsuario.FechaInicio
+            .AddDays(pago.MembresiaUsuario.PlanMembresia.DuracionDias);
         pago.MembresiaUsuario.Estado = EstadoMembresia.Vigente;
         await dbContext.SaveChangesAsync(cancellationToken);
         return true;
@@ -212,11 +205,9 @@ public class UsuarioService(OlympusDbContext dbContext) : IUsuarioService
             pago.EstadoPago = request.EstadoPago.Value;
             if (pago.EstadoPago == EstadoPago.Aprobado)
             {
-                var ahora = DateTime.UtcNow;
                 var membresia = pago.MembresiaUsuario;
                 membresia.Estado = EstadoMembresia.Vigente;
-                membresia.FechaInicio = ahora;
-                membresia.FechaFin = ahora.AddDays(membresia.PlanMembresia.DuracionDias);
+                membresia.FechaFin = membresia.FechaInicio.AddDays(membresia.PlanMembresia.DuracionDias);
             }
         }
 
