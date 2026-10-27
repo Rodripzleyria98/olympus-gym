@@ -1,6 +1,6 @@
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
-import { Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { Component, DestroyRef, HostListener, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { debounceTime, distinctUntilChanged, Subject } from 'rxjs';
@@ -46,7 +46,10 @@ interface Publicacion {
         @for (post of posts(); track post.id) {
           <article class="news-item">
             @if (post.imagenUrl && !brokenImageIds().has(post.id)) {
-              <img class="news-image" [src]="imageSrc(post.imagenUrl)" [alt]="post.titulo" (error)="onImageError(post.id)" />
+              <button class="news-image-trigger" type="button" [attr.aria-label]="'Ampliar imagen: ' + post.titulo" (click)="abrirImagenCompleta(post.imagenUrl, post.titulo)">
+                <img class="news-image" [src]="imageSrc(post.imagenUrl)" [alt]="post.titulo" (error)="onImageError(post.id)" />
+                <span class="news-image-zoom" aria-hidden="true">⌕</span>
+              </button>
             } @else if (post.imagenUrl) { <div class="news-image-fallback" role="img" aria-label="Imagen no disponible">Imagen no disponible</div> }
             <div class="news-body"><div class="news-meta"><span>{{ post.autorNombre }}</span><time>{{ post.fechaPublicacion | date:'d MMM y' }}</time></div>
               <h2>{{ post.titulo }}</h2><p>{{ post.contenido }}</p>
@@ -65,6 +68,12 @@ interface Publicacion {
         </nav>
       }
     </section>
+    @if (activeImage(); as image) {
+      <div class="forum-lightbox" role="dialog" aria-modal="true" [attr.aria-label]="'Imagen ampliada: ' + image.alt" tabindex="-1" (click)="cerrarImagenCompleta()">
+        <button class="forum-lightbox-close" type="button" aria-label="Cerrar imagen ampliada" (click)="cerrarImagenCompleta()">×</button>
+        <img class="forum-lightbox-image" [src]="image.src" [alt]="image.alt" (click)="$event.stopPropagation()" />
+      </div>
+    }
   `,
 })
 export class ForoComponent implements OnInit {
@@ -85,6 +94,7 @@ export class ForoComponent implements OnInit {
   private selectedFile: File | null = null;
   readonly imagePreview = signal<string | null>(null);
   readonly brokenImageIds = signal<Set<number>>(new Set());
+  readonly activeImage = signal<{ src: string; alt: string } | null>(null);
 
   ngOnInit(): void {
     this.searchChanges.pipe(
@@ -175,6 +185,19 @@ export class ForoComponent implements OnInit {
     return url.startsWith('/')
       ? `${API_BASE_URL.replace(/\/api\/?$/, '')}${url}`
       : url;
+  }
+
+  abrirImagenCompleta(url: string, alt: string): void {
+    this.activeImage.set({ src: this.imageSrc(url), alt });
+  }
+
+  cerrarImagenCompleta(): void {
+    this.activeImage.set(null);
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    this.cerrarImagenCompleta();
   }
 
   onImageError(postId: number): void {

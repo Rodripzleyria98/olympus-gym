@@ -100,8 +100,17 @@ textarea { resize: vertical; }
 .form-actions { display: flex; gap: 10px; }
 .news-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin-top: 28px; background: var(--line); border: 1px solid var(--line); }
 .news-item { min-width: 0; background: var(--white); }
-.news-image { display: block; width: 100%; aspect-ratio: 16/8; object-fit: cover; background: #deded5; }
+.news-image-trigger { position: relative; display: block; width: 100%; padding: 0; overflow: hidden; border: 0; background: #0b131b; cursor: zoom-in; }
+.news-image { display: block; width: 100%; max-height: 380px; aspect-ratio: 16/9; object-fit: contain; background: #0b131b; }
+.news-image-trigger .news-image { transition: transform .2s ease, filter .2s ease; }
+.news-image-trigger:hover .news-image, .news-image-trigger:focus-visible .news-image { transform: scale(1.01); filter: brightness(1.05); }
+.news-image-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.news-image-zoom { position: absolute; right: 12px; bottom: 12px; display: grid; width: 32px; height: 32px; place-items: center; color: #e9faff; border: 1px solid rgba(255, 255, 255, .35); border-radius: 50%; background: rgba(3, 10, 15, .68); font-size: 23px; line-height: 1; pointer-events: none; }
 .news-image-fallback { display: grid; width: 100%; aspect-ratio: 16/8; place-items: center; background: #deded5; color: #404542; font-size: 13px; }
+.forum-lightbox { position: fixed; z-index: 1100; inset: 0; display: grid; place-items: center; padding: 5vh 5vw; background: rgba(0, 0, 0, .85); backdrop-filter: blur(6px); cursor: zoom-out; }
+.forum-lightbox-image { display: block; max-width: 90vw; max-height: 85vh; object-fit: contain; border-radius: 8px; box-shadow: 0 10px 30px rgba(0, 0, 0, .7); cursor: default; }
+.forum-lightbox-close { position: absolute; top: max(16px, env(safe-area-inset-top)); right: max(18px, env(safe-area-inset-right)); display: grid; width: 44px; height: 44px; place-items: center; color: #effcff; border: 1px solid rgba(0, 229, 255, .65); border-radius: 50%; background: rgba(5, 17, 24, .85); cursor: pointer; font-size: 30px; line-height: 1; }
+.forum-lightbox-close:hover, .forum-lightbox-close:focus-visible { color: #041116; background: var(--accent); }
 .news-body { padding: 23px 25px 20px; }
 .news-meta { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 10px; }
 .news-body h2 { margin: 14px 0 9px; font-size: 30px; }
