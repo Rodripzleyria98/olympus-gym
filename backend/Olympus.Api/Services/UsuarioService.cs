@@ -60,6 +60,18 @@ public class UsuarioService(OlympusDbContext dbContext) : IUsuarioService
                 FechaVencimiento = usuario.Membresias
                     .OrderByDescending(membresia => membresia.FechaFin)
                     .Select(membresia => (DateTime?)membresia.FechaFin)
+                    .FirstOrDefault(),
+                PlanMembresia = usuario.Membresias
+                    .Where(membresia => membresia.Estado == EstadoMembresia.Vigente &&
+                        membresia.FechaFin >= ahora)
+                    .OrderByDescending(membresia => membresia.FechaFin)
+                    .Select(membresia => membresia.PlanMembresia.Nombre)
+                    .FirstOrDefault(),
+                ClasesIncluidas = usuario.Membresias
+                    .Where(membresia => membresia.Estado == EstadoMembresia.Vigente &&
+                        membresia.FechaFin >= ahora)
+                    .OrderByDescending(membresia => membresia.FechaFin)
+                    .Select(membresia => membresia.PlanMembresia.ClasesIncluidas)
                     .FirstOrDefault()
             })
             .ToListAsync(cancellationToken);
@@ -74,7 +86,9 @@ public class UsuarioService(OlympusDbContext dbContext) : IUsuarioService
             usuario.IsActivo,
             usuario.IsActivo,
             usuario.FechaVencimiento,
-            usuario.FechaVencimiento is { } fin ? Math.Max(0, (int)Math.Ceiling((fin - ahora).TotalDays)) : 0))
+            usuario.FechaVencimiento is { } fin ? Math.Max(0, (int)Math.Ceiling((fin - ahora).TotalDays)) : 0,
+            usuario.PlanMembresia,
+            usuario.ClasesIncluidas))
             .ToArray();
 
         return PagedResponse<UsuarioAdminDto>.Create(items, page, pageSize, totalCount);

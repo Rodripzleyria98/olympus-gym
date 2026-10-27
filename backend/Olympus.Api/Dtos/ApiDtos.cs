@@ -63,7 +63,9 @@ public record UsuarioAdminDto(
     bool IsActivo,
     bool EstaAlDia,
     DateTime? FechaVencimiento,
-    int DiasRestantes);
+    int DiasRestantes,
+    string? PlanMembresia,
+    int? ClasesIncluidas);
 
 public record UsuarioRolAdminDto(
     Guid Id,

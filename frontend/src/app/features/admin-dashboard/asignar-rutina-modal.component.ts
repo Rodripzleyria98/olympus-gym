@@ -1,6 +1,6 @@
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { Component, DestroyRef, inject, input, OnInit, output, signal } from '@angular/core';
-import { FormArray, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { AbstractControl, FormArray, FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { debounceTime, distinctUntilChanged, Subject, switchMap } from 'rxjs';
@@ -13,6 +13,8 @@ export interface SocioRutina {
   nombre: string;
   apellido: string;
   email: string;
+  planMembresia: string | null;
+  clasesIncluidas: number | null;
 }
 
 interface EjercicioPlantilla {
@@ -77,6 +79,7 @@ interface PlantillaRutina {
           </div>
 
           <div class="routine-days-toolbar"><span class="eyebrow">DÍAS DE ENTRENAMIENTO · {{ dias.length }}</span><button class="button button-neon button-small" type="button" (click)="addDay()">+ Agregar Día</button></div>
+          @if (planNotice()) { <p class="muted" role="status">{{ planNotice() }}</p> }
           <div class="routine-days-list" formArrayName="dias">
             @for (day of dias.controls; track $index; let dayIndex = $index) {
               <section class="routine-edit-day" [formGroupName]="dayIndex">
@@ -104,7 +107,12 @@ interface PlantillaRutina {
           </div>
 
           @if (errorMessage()) { <p class="form-error" role="alert">{{ errorMessage() }}</p> }
-          <footer class="routine-modal-footer"><button class="button button-quiet" type="button" (click)="close.emit()">Cancelar</button><button class="button button-neon" type="submit" [disabled]="saving() || form.invalid || !selectedMemberId()">{{ saving() ? 'Guardando…' : 'Guardar y Asignar Rutina' }}</button></footer>
+          @if (showValidationErrors() && getFormValidationErrors().length) {
+            <ul class="form-error" role="alert">
+              @for (validationError of getFormValidationErrors(); track validationError) { <li>{{ validationError }}</li> }
+            </ul>
+          }
+          <footer class="routine-modal-footer"><button class="button button-quiet" type="button" (click)="close.emit()">Cancelar</button><button class="button button-neon" type="submit" [disabled]="saving() || !selectedMemberId()">{{ saving() ? 'Guardando…' : 'Guardar y Asignar Rutina' }}</button></footer>
         </form>
         @if (!importModalOpen() && importMessage()) { <p [class.form-error]="importHasErrors()" role="status">{{ importMessage() }}</p> }
 
@@ -149,13 +157,15 @@ export class AsignarRutinaModalComponent implements OnInit {
   readonly importHasErrors = signal(false);
   readonly importModalOpen = signal(false);
   readonly saving = signal(false);
+  readonly showValidationErrors = signal(false);
+  readonly planNotice = signal('');
   pasteTargetDay = 0;
   routineText = '';
   readonly form = this.formBuilder.group({
     titulo: ['', [Validators.required, Validators.maxLength(200)]],
     fechaInicio: [new Date().toISOString().slice(0, 10), Validators.required],
     fechaRevision: [''],
-    dias: this.formBuilder.array([]),
+    dias: this.formBuilder.array([], Validators.minLength(1)),
   });
 
   get dias(): FormArray {
@@ -188,6 +198,7 @@ export class AsignarRutinaModalComponent implements OnInit {
           if (match.id !== this.selectedMemberId()) this.resetRoutineForm();
           this.selectedMemberId.set(match.id);
           this.selectedMemberName.set(this.fullName(match));
+          this.applyMembershipSuggestion(match);
         }
       },
       error: () => this.errorMessage.set('No se pudo cargar la lista de socios.'),
@@ -197,6 +208,7 @@ export class AsignarRutinaModalComponent implements OnInit {
       error: () => this.errorMessage.set('No se pudieron cargar las plantillas. Puedes crear una rutina personalizada.'),
     });
     this.resetRoutineForm();
+    this.applyMembershipSuggestion(initialMember);
   }
 
   fullName(member: SocioRutina): string {
@@ -215,6 +227,7 @@ export class AsignarRutinaModalComponent implements OnInit {
       if (matched.id !== this.selectedMemberId()) this.resetRoutineForm();
       this.selectedMemberId.set(matched.id);
       this.selectedMemberName.set(this.fullName(matched));
+      this.applyMembershipSuggestion(matched);
     }
     this.memberSearchTerms.next(value.trim());
   }
@@ -328,6 +341,8 @@ export class AsignarRutinaModalComponent implements OnInit {
     }
     if (this.form.invalid || this.saving()) {
       this.form.markAllAsTouched();
+      this.showValidationErrors.set(true);
+      this.errorMessage.set('Completa los campos obligatorios antes de guardar.');
       return;
     }
 
@@ -351,6 +366,7 @@ export class AsignarRutinaModalComponent implements OnInit {
     };
 
     this.saving.set(true);
+    this.showValidationErrors.set(false);
     this.errorMessage.set('');
     this.http.post(`${API_BASE_URL}/admin/rutinas/asignar`, request).subscribe({
       next: () => this.assigned.emit(),
@@ -376,11 +392,66 @@ export class AsignarRutinaModalComponent implements OnInit {
     this.importMessage.set('');
     this.importHasErrors.set(false);
     this.importModalOpen.set(false);
+    this.showValidationErrors.set(false);
+    this.planNotice.set('');
     this.pasteTargetDay = 0;
     this.form.patchValue({ titulo: '', fechaInicio: new Date().toISOString().slice(0, 10), fechaRevision: '' });
     this.dias.clear();
     this.addDay();
     this.addExercise(0);
+  }
+
+  getFormValidationErrors(): string[] {
+    const errors: string[] = [];
+    const collect = (control: AbstractControl, path: string): void => {
+      if (control.errors) {
+        if (control.errors['required']) errors.push(`${path}: este campo es obligatorio.`);
+        if (control.errors['maxlength']) errors.push(`${path}: supera el máximo permitido.`);
+        if (control.errors['minlength']) errors.push(`${path}: agrega al menos un día.`);
+      }
+      if (control instanceof FormArray || control instanceof FormGroup) {
+        Object.keys(control.controls).forEach(key => {
+          const childPath = control instanceof FormArray
+            ? `Día ${Number(key) + 1}`
+            : `${path} > ${key}`;
+          const child = control instanceof FormArray
+            ? control.at(Number(key))
+            : control.controls[key];
+          collect(child, childPath);
+        });
+      }
+    };
+    collect(this.form, 'Formulario');
+    return [...new Set(errors)];
+  }
+
+  private applyMembershipSuggestion(member: SocioRutina): void {
+    const weeklyAccesses = member.clasesIncluidas === null
+      ? null
+      : Math.max(1, Math.min(7, Math.round(member.clasesIncluidas / 4)));
+    if (weeklyAccesses === null) {
+      this.planNotice.set(member.planMembresia
+        ? `${member.planMembresia}: puedes asignar entre 1 y 7 días según la necesidad del socio.`
+        : 'Sin membresía activa informada: puedes asignar entre 1 y 7 días.');
+      return;
+    }
+
+    this.planNotice.set(`${member.planMembresia ?? 'Membresía activa'}: se sugieren ${weeklyAccesses} días por semana. Puedes ajustar la cantidad sin bloquear el guardado.`);
+    if (this.dias.length === 1 && this.isEmptyDay(this.dias.at(0))) {
+      while (this.dias.length < weeklyAccesses) this.addDay();
+      while (this.dias.length > weeklyAccesses) this.dias.removeAt(this.dias.length - 1);
+      for (let index = 0; index < this.dias.length; index++) {
+        if (!this.exercisesAt(index).length) this.addExercise(index);
+      }
+    }
+  }
+
+  private isEmptyDay(day: AbstractControl): boolean {
+    const exercises = day.get('ejercicios') as FormArray;
+    return !day.get('nombreDia')?.value && !day.get('enfoque')?.value &&
+      exercises.controls.every(exercise =>
+        !exercise.get('nombre')?.value && !exercise.get('seriesYRepeticiones')?.value &&
+        !exercise.get('notas')?.value);
   }
 
   private dateForInput(value: string | null): string | null {

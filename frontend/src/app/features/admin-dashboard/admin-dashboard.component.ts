@@ -20,6 +20,8 @@ interface Socio {
   estaAlDia: boolean;
   fechaVencimiento: string | null;
   diasRestantes: number;
+  planMembresia: string | null;
+  clasesIncluidas: number | null;
 }
 
 interface Historial {
@@ -328,7 +330,14 @@ export class AdminDashboardComponent implements OnInit {
   }
 
   openRoutine(socio: Socio): void {
-    this.routineSocio.set({ id: socio.id, nombre: socio.nombre, apellido: socio.apellido, email: socio.email });
+    this.routineSocio.set({
+      id: socio.id,
+      nombre: socio.nombre,
+      apellido: socio.apellido,
+      email: socio.email,
+      planMembresia: socio.planMembresia,
+      clasesIncluidas: socio.clasesIncluidas,
+    });
   }
 
   closeRoutine(): void {
