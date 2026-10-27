@@ -90,7 +90,8 @@ public class OlympusDbContext(DbContextOptions<OlympusDbContext> options) : DbCo
             entity.HasKey(publicacion => publicacion.Id);
             entity.Property(publicacion => publicacion.Titulo).HasMaxLength(200).IsRequired();
             entity.Property(publicacion => publicacion.Contenido).HasMaxLength(10000).IsRequired();
-            entity.Property(publicacion => publicacion.ImagenUrl).HasMaxLength(2048);
+            entity.Property(publicacion => publicacion.ImagenData).HasColumnType("bytea");
+            entity.Property(publicacion => publicacion.ImagenMimeType).HasMaxLength(100);
             entity.HasOne(publicacion => publicacion.Autor)
                 .WithMany(usuario => usuario.PublicacionesForo)
                 .HasForeignKey(publicacion => publicacion.AutorId)

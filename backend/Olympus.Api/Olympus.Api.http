@@ -188,7 +188,7 @@ Content-Type: application/json
   "metodoPago": "Efectivo"
 }
 
-### Create a forum post with an optional local image (admin)
+### Create a forum post with an optional image stored in PostgreSQL (admin)
 POST {{Olympus.Api_HostAddress}}/api/foro/posts
 Authorization: Bearer {{token}}
 Content-Type: multipart/form-data; boundary=OlympusBoundary
@@ -207,3 +207,6 @@ Content-Type: image/png
 
 < C:\path\to\aviso.png
 --OlympusBoundary--
+
+### Get a forum post image from PostgreSQL
+GET {{Olympus.Api_HostAddress}}/api/foro/posts/{{publicacionId}}/imagen

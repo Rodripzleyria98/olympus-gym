@@ -95,13 +95,13 @@ namespace Olympus.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Fecha", "Turno")
-                        .IsUnique()
-                        .HasFilter("\"Estado\" = 'Abierta'");
-
                     b.HasIndex("UsuarioAperturaId");
 
                     b.HasIndex("UsuarioCierreId");
+
+                    b.HasIndex("Fecha", "Turno")
+                        .IsUnique()
+                        .HasFilter("\"Estado\" = 'Abierta'");
 
                     b.ToTable("CajasTurno");
                 });
@@ -2339,9 +2339,12 @@ namespace Olympus.Api.Migrations
                     b.Property<DateTime>("FechaPublicacion")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("ImagenUrl")
-                        .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)");
+                    b.Property<byte[]>("ImagenData")
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("ImagenMimeType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("Titulo")
                         .IsRequired()

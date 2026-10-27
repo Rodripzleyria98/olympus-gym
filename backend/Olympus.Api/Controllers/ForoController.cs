@@ -10,7 +10,7 @@ namespace Olympus.Api.Controllers;
 
 [ApiController]
 [Route("api/foro")]
-public class ForoController(OlympusDbContext dbContext, IWebHostEnvironment environment) : ControllerBase
+public class ForoController(OlympusDbContext dbContext) : ControllerBase
 {
     [HttpGet]
     [AllowAnonymous]
@@ -43,7 +43,7 @@ public class ForoController(OlympusDbContext dbContext, IWebHostEnvironment envi
                 publicacion.Id,
                 publicacion.Titulo,
                 publicacion.Contenido,
-                publicacion.ImagenUrl,
+                publicacion.ImagenData != null ? $"/api/foro/posts/{publicacion.Id}/imagen" : null,
                 publicacion.FechaPublicacion,
                 publicacion.AutorId,
                 publicacion.Autor.Nombre + " " + publicacion.Autor.Apellido))
@@ -62,12 +62,26 @@ public class ForoController(OlympusDbContext dbContext, IWebHostEnvironment envi
                 item.Id,
                 item.Titulo,
                 item.Contenido,
-                item.ImagenUrl,
+                item.ImagenData != null ? $"/api/foro/posts/{item.Id}/imagen" : null,
                 item.FechaPublicacion,
                 item.AutorId,
                 item.Autor.Nombre + " " + item.Autor.Apellido))
             .FirstOrDefaultAsync(cancellationToken);
         return publicacion is null ? NotFound() : Ok(publicacion);
+    }
+
+    [HttpGet("posts/{id:int}/imagen")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetImage(int id, CancellationToken cancellationToken)
+    {
+        var image = await dbContext.PublicacionesForo.AsNoTracking()
+            .Where(item => item.Id == id && item.ImagenData != null && item.ImagenMimeType != null)
+            .Select(item => new { item.ImagenData, item.ImagenMimeType })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return image is null
+            ? NotFound()
+            : File(image.ImagenData!, image.ImagenMimeType!);
     }
 
     [HttpPost]
@@ -79,12 +93,13 @@ public class ForoController(OlympusDbContext dbContext, IWebHostEnvironment envi
     {
         var imageError = ValidateImage(request.Imagen);
         if (imageError is not null) return BadRequest(new { message = imageError });
-        var imageUrl = await SaveImageAsync(request.Imagen, cancellationToken);
+        var imageData = await ReadImageAsync(request.Imagen, cancellationToken);
         var publicacion = new PublicacionForo
         {
             Titulo = request.Titulo.Trim(),
             Contenido = request.Contenido.Trim(),
-            ImagenUrl = imageUrl,
+            ImagenData = imageData,
+            ImagenMimeType = request.Imagen?.ContentType,
             FechaPublicacion = DateTime.UtcNow,
             AutorId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!)
         };
@@ -96,7 +111,7 @@ public class ForoController(OlympusDbContext dbContext, IWebHostEnvironment envi
             publicacion.Id,
             publicacion.Titulo,
             publicacion.Contenido,
-            publicacion.ImagenUrl,
+            publicacion.ImagenData is not null ? $"/api/foro/posts/{publicacion.Id}/imagen" : null,
             publicacion.FechaPublicacion,
             publicacion.AutorId,
             $"{publicacion.Autor.Nombre} {publicacion.Autor.Apellido}");
@@ -121,7 +136,10 @@ public class ForoController(OlympusDbContext dbContext, IWebHostEnvironment envi
         publicacion.Titulo = request.Titulo.Trim();
         publicacion.Contenido = request.Contenido.Trim();
         if (request.Imagen is not null)
-            publicacion.ImagenUrl = await SaveImageAsync(request.Imagen, cancellationToken);
+        {
+            publicacion.ImagenData = await ReadImageAsync(request.Imagen, cancellationToken);
+            publicacion.ImagenMimeType = request.Imagen.ContentType;
+        }
         await dbContext.SaveChangesAsync(cancellationToken);
         return NoContent();
     }
@@ -143,18 +161,13 @@ public class ForoController(OlympusDbContext dbContext, IWebHostEnvironment envi
         return null;
     }
 
-    private async Task<string?> SaveImageAsync(IFormFile? image, CancellationToken cancellationToken)
+    private static async Task<byte[]?> ReadImageAsync(IFormFile? image, CancellationToken cancellationToken)
     {
         if (image is null) return null;
 
-        var extension = Path.GetExtension(image.FileName).ToLowerInvariant();
-        var folder = Path.Combine(environment.WebRootPath ?? Path.Combine(environment.ContentRootPath, "wwwroot"), "uploads", "foro");
-        Directory.CreateDirectory(folder);
-        var fileName = $"{Guid.NewGuid():N}{extension}";
-        var path = Path.Combine(folder, fileName);
-        await using var stream = System.IO.File.Create(path);
+        await using var stream = new MemoryStream((int)image.Length);
         await image.CopyToAsync(stream, cancellationToken);
-        return $"/uploads/foro/{fileName}";
+        return stream.ToArray();
     }
 
     [HttpDelete("{id:int}")]
