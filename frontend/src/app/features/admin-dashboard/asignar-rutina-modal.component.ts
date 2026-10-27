@@ -69,8 +69,6 @@ interface PlantillaRutina {
           </select>
         </label>
 
-        <button class="button button-quiet" type="button" (click)="importModalOpen.set(true)">Importar / Pegar desde texto</button>
-
         <form [formGroup]="form" (ngSubmit)="save()">
           <div class="routine-form-top">
             <label>Título<input formControlName="titulo" maxlength="200" placeholder="Plan de entrenamiento" /></label>
@@ -95,6 +93,7 @@ interface PlantillaRutina {
                   }
                 </div>
                 <button class="routine-add-exercise" type="button" (click)="addExercise(dayIndex)">+ Agregar Ejercicio</button>
+                <button class="routine-add-exercise" type="button" (click)="openDayImport(dayIndex)">Pegar rutina de este día</button>
               </section>
             } @empty { <p class="routine-form-empty">Agrega un día para empezar a armar la rutina.</p> }
           </div>
@@ -102,20 +101,21 @@ interface PlantillaRutina {
           @if (errorMessage()) { <p class="form-error" role="alert">{{ errorMessage() }}</p> }
           <footer class="routine-modal-footer"><button class="button button-quiet" type="button" (click)="close.emit()">Cancelar</button><button class="button button-neon" type="submit" [disabled]="saving() || form.invalid || !selectedMemberId()">{{ saving() ? 'Guardando…' : 'Guardar y Asignar Rutina' }}</button></footer>
         </form>
+        @if (!importModalOpen() && importMessage()) { <p [class.form-error]="importHasErrors()" role="status">{{ importMessage() }}</p> }
 
         @if (importModalOpen()) {
-          <div class="modal-backdrop" (click)="importModalOpen.set(false)" (keydown.escape)="importModalOpen.set(false)">
+          <div class="modal-backdrop routine-day-import-backdrop" (click)="closeDayImport()" (keydown.escape)="closeDayImport(); $event.stopPropagation()">
             <section class="routine-assignment-modal" role="dialog" aria-modal="true" aria-labelledby="routine-import-title" (click)="$event.stopPropagation()">
               <header class="routine-modal-header">
-                <div><span class="eyebrow">CARGA RÁPIDA</span><h2 id="routine-import-title">Importar rutina desde texto</h2><p>Pega la rutina completa. Se reconocerán días, ejercicios, series, repeticiones y notas.</p></div>
-                <button class="modal-close" type="button" aria-label="Cerrar importador" (click)="importModalOpen.set(false)">×</button>
+                <div><span class="eyebrow">CARGA RÁPIDA · {{ dayImportName() }}</span><h2 id="routine-import-title">Pegar rutina de este día</h2><p>Pega los ejercicios de este día. Se agregarán a sus filas y podrás editarlos antes de guardar.</p></div>
+                <button class="modal-close" type="button" aria-label="Cerrar importador" (click)="closeDayImport()">×</button>
               </header>
-              <label>Rutina<textarea name="routineText" [(ngModel)]="routineText" [ngModelOptions]="{ standalone: true }" rows="14" placeholder="Día 1 — Pecho, hombros y tríceps&#10;1. Press de banca con barra — 4 x 6-8&#10;2. Press inclinado con mancuernas — 3 x 8-10&#10;&#10;Día 2 — Piernas A&#10;1. Sentadilla con barra — 4 x 6-8"></textarea></label>
-              <p class="muted">Formato flexible: encabezados “Día 1”, “Lunes”, etc. Las líneas sin series/repeticiones también se importan como nombre del ejercicio para que puedas completarlas.</p>
+              <label>Ejercicios<textarea name="routineText" [(ngModel)]="routineText" [ngModelOptions]="{ standalone: true }" rows="14" placeholder="1. Press de banca con barra — 4 x 6-8&#10;2. Press inclinado con mancuernas — 3 x 8-10&#10;3. Aperturas en polea — 3 x 12-15"></textarea></label>
+              <p class="muted">Puedes incluir un encabezado de día, pero pega ejercicios de un solo día. Las líneas sin series/repeticiones se conservan como nombre del ejercicio para que puedas completarlas.</p>
               @if (importMessage()) { <p [class.form-error]="importHasErrors()" role="status">{{ importMessage() }}</p> }
               <footer class="routine-modal-footer">
-                <button class="button button-quiet" type="button" (click)="importModalOpen.set(false)">Cancelar</button>
-                <button class="button button-neon" type="button" (click)="parseRoutineText()">Procesar y Cargar</button>
+                <button class="button button-quiet" type="button" (click)="closeDayImport()">Cancelar</button>
+                <button class="button button-neon" type="button" (click)="processDayText()">Procesar / Cargar en este día</button>
               </footer>
             </section>
           </div>
@@ -256,31 +256,50 @@ export class AsignarRutinaModalComponent implements OnInit {
     exercises.insert(targetIndex, exercise);
   }
 
-  parseRoutineText(): void {
+  openDayImport(dayIndex: number): void {
+    this.pasteTargetDay = dayIndex;
+    this.routineText = '';
+    this.importMessage.set('');
+    this.importHasErrors.set(false);
+    this.importModalOpen.set(true);
+  }
+
+  closeDayImport(): void {
+    this.importModalOpen.set(false);
+  }
+
+  dayImportName(): string {
+    const name = this.dias.at(this.pasteTargetDay)?.get('nombreDia')?.value as string | undefined;
+    return name?.trim() || `Día ${this.pasteTargetDay + 1}`;
+  }
+
+  processDayText(): void {
     const parsedDays = parseRoutineText(this.routineText);
     if (!parsedDays.length) {
       this.importMessage.set('Pega al menos una línea con un ejercicio.');
       this.importHasErrors.set(true);
       return;
     }
-    if (parsedDays.length > 7) {
-      this.importMessage.set('La rutina admite hasta 7 días. Reduce los encabezados de día antes de importar.');
+    if (parsedDays.length !== 1) {
+      this.importMessage.set('Este panel carga un solo día. Quita los otros encabezados o importa cada día por separado.');
       this.importHasErrors.set(true);
       return;
     }
 
-    this.dias.clear();
-    parsedDays.forEach(day => this.addDay(day));
-    const exerciseCount = parsedDays.reduce((count, day) => count + day.ejercicios.length, 0);
-    const unparsedCount = parsedDays.reduce(
-      (count, day) => count + day.ejercicios.filter(exercise => !exercise.seriesYRepeticiones).length,
-      0,
-    );
+    if (this.pasteTargetDay < 0 || this.pasteTargetDay >= this.dias.length) {
+      this.importMessage.set('El día seleccionado ya no existe. Cierra el importador y vuelve a abrirlo desde el día correspondiente.');
+      this.importHasErrors.set(true);
+      return;
+    }
+
+    const exercises = parsedDays[0].ejercicios;
+    exercises.forEach(exercise => this.exercisesAt(this.pasteTargetDay).push(this.createExercise(exercise)));
     this.selectedTemplate.set('');
+    const unparsedCount = exercises.filter(exercise => !exercise.seriesYRepeticiones).length;
     this.importHasErrors.set(unparsedCount > 0);
-    this.importMessage.set(`Se cargaron ${parsedDays.length} día(s) y ${exerciseCount} ejercicio(s).` +
-      (unparsedCount ? ` Completa las series y repeticiones de ${unparsedCount} ejercicio(s) marcados.` : ''));
-    this.importModalOpen.set(false);
+    this.importMessage.set(`Se agregaron ${exercises.length} ejercicio(s) en ${this.dayImportName()}.` +
+      (unparsedCount ? ` Completa las series y repeticiones de ${unparsedCount} ejercicio(s).` : ''));
+    this.closeDayImport();
   }
 
   selectTemplate(value: string): void {

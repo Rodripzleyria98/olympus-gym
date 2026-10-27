@@ -151,7 +151,7 @@ public class UsuarioService(OlympusDbContext dbContext) : IUsuarioService
             .ThenInclude(item => item.PlanMembresia)
             .FirstOrDefaultAsync(item => item.Id == pagoId, cancellationToken);
         if (pago is null || pago.EstadoPago != EstadoPago.Pendiente ||
-            !string.Equals(pago.MetodoPago, "Transferencia", StringComparison.OrdinalIgnoreCase))
+            pago.MetodoPago is not ("Transferencia" or "MercadoPago"))
             return false;
 
         var ahora = DateTime.UtcNow;

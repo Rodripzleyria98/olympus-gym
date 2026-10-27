@@ -286,7 +286,7 @@ public class AsignarMembresiaAdminRequestDto
     public Guid UsuarioId { get; set; }
     [Range(1, int.MaxValue)]
     public int PlanMembresiaId { get; set; }
-    [Required, RegularExpression("^(Efectivo|Transferencia|Bonificada)$")]
+    [Required, RegularExpression("^(Efectivo|Transferencia|MercadoPago)$")]
     public string TipoOtorgamiento { get; set; } = "Efectivo";
 
     public DateOnly? FechaInicio { get; set; }
@@ -308,7 +308,7 @@ public class RegistrarSocioConMembresiaRequestDto
     public string Password { get; set; } = string.Empty;
     [Range(1, int.MaxValue)]
     public int PlanMembresiaId { get; set; }
-    [Required, RegularExpression("^(Efectivo|Transferencia|Bonificada)$")]
+    [Required, RegularExpression("^(Efectivo|Transferencia|MercadoPago)$")]
     public string TipoOtorgamiento { get; set; } = "Efectivo";
 
     public DateOnly? FechaInicio { get; set; }

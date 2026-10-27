@@ -31,11 +31,9 @@ public class AdminController(
             item.Id == request.PlanMembresiaId && item.IsActivo, cancellationToken);
         if (plan is null) return NotFound(new { message = "No se encontró el plan activo." });
 
-        var caja = request.TipoOtorgamiento == "Bonificada"
-            ? null
-            : await ObtenerCajaAbiertaAsync(cancellationToken);
-        if (request.TipoOtorgamiento != "Bonificada" && caja is null)
-            return Conflict(new { message = "Debe haber una caja abierta para registrar el cobro en efectivo." });
+        var caja = await ObtenerCajaAbiertaAsync(cancellationToken);
+        if (caja is null)
+            return Conflict(new { message = "Debe haber una caja abierta para registrar el pago." });
 
         var response = await CrearMembresiaAsync(
             usuario, plan, request.TipoOtorgamiento, request.FechaInicio, caja, cancellationToken);
@@ -58,11 +56,9 @@ public class AdminController(
             item.Id == request.PlanMembresiaId && item.IsActivo, cancellationToken);
         if (plan is null) return NotFound(new { message = "No se encontró el plan activo." });
 
-        var caja = request.TipoOtorgamiento == "Bonificada"
-            ? null
-            : await ObtenerCajaAbiertaAsync(cancellationToken);
-        if (request.TipoOtorgamiento != "Bonificada" && caja is null)
-            return Conflict(new { message = "Debe haber una caja abierta para registrar el cobro en efectivo." });
+        var caja = await ObtenerCajaAbiertaAsync(cancellationToken);
+        if (caja is null)
+            return Conflict(new { message = "Debe haber una caja abierta para registrar el pago." });
 
         var usuario = new Usuario
         {
@@ -150,7 +146,7 @@ public class AdminController(
     public async Task<IActionResult> ValidarPagoPendiente(Guid pagoId, CancellationToken cancellationToken)
     {
         if (!await usuarioService.ValidarPagoPendienteAsync(pagoId, cancellationToken))
-            return Conflict(new { message = "El pago ya fue procesado o no es una transferencia pendiente de validar." });
+            return Conflict(new { message = "El pago ya fue procesado o no es una transferencia o pago de Mercado Pago pendiente de validar." });
         return NoContent();
     }
 
@@ -241,11 +237,11 @@ public class AdminController(
             PlanMembresiaId = plan.Id,
             FechaInicio = inicio,
             FechaFin = inicio.AddDays(plan.DuracionDias),
-            Estado = tipoOtorgamiento == "Transferencia" ? EstadoMembresia.Pendiente : EstadoMembresia.Vigente
+            Estado = tipoOtorgamiento == "Efectivo" ? EstadoMembresia.Vigente : EstadoMembresia.Pendiente
         };
         dbContext.MembresiasUsuario.Add(membresia);
 
-        if (tipoOtorgamiento is "Efectivo" or "Transferencia")
+        if (tipoOtorgamiento is "Efectivo" or "Transferencia" or "MercadoPago")
         {
             dbContext.Pagos.Add(new Pago
             {

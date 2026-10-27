@@ -57,7 +57,7 @@ interface PagoPendiente {
       @if (auth.isAdmin() || auth.isProfesor()) {
         <section class="history-panel">
           <div class="heading-split">
-            <div><span class="eyebrow">PAGOS POR VALIDAR</span><h2>Renovaciones pendientes</h2><p class="muted">Revisa los pagos de membresía reportados por los socios.</p></div>
+            <div><span class="eyebrow">PAGOS POR VALIDAR</span><h2>Renovaciones pendientes</h2><p class="muted">Verifica las transferencias y pagos de Mercado Pago antes de aprobarlos.</p></div>
             <button class="button button-small" type="button" (click)="loadPendingPayments()">Actualizar</button>
           </div>
           @if (pendingPaymentError()) { <p class="form-error" role="alert">{{ pendingPaymentError() }}</p> }
@@ -70,7 +70,7 @@ interface PagoPendiente {
                 <td>{{ payment.monto | currency:'ARS':'symbol':'1.0-2' }}</td>
                 <td>{{ payment.metodoPago }}</td>
                 <td>
-                  @if (payment.metodoPago === 'Transferencia') {
+                  @if (payment.metodoPago === 'Transferencia' || payment.metodoPago === 'MercadoPago') {
                     <button class="text-button" type="button" [disabled]="validatingPaymentId() === payment.id" (click)="approvePayment(payment.id)">
                       {{ validatingPaymentId() === payment.id ? 'Validando…' : 'Validar pago' }}
                     </button>
@@ -162,7 +162,7 @@ interface PagoPendiente {
               <div class="history-row"><div><strong>{{ membership.plan }}</strong><small>{{ membership.fechaInicio | date:'d MMM y' }} – {{ membership.fechaFin | date:'d MMM y' }}</small></div><span class="status-badge" [class.status-active]="membership.estado === 'Vigente'" [class.status-inactive]="membership.estado !== 'Vigente'">{{ membership.estado }}</span>
                 @for (payment of membership.pagos; track payment.id) {
                   <div class="payment-row"><span>Pago {{ payment.fechaPago | date:'d MMM y' }}</span><strong>{{ payment.monto | currency:'MXN':'symbol':'1.0-0' }}</strong><span>{{ payment.estadoPago }}</span>
-                    @if ((auth.isAdmin() || auth.isProfesor()) && payment.estadoPago === 'Pendiente' && payment.metodoPago === 'Transferencia') { <button class="text-button" type="button" (click)="approvePayment(payment.id)">Validar pago</button> }
+                    @if ((auth.isAdmin() || auth.isProfesor()) && payment.estadoPago === 'Pendiente' && (payment.metodoPago === 'Transferencia' || payment.metodoPago === 'MercadoPago')) { <button class="text-button" type="button" (click)="approvePayment(payment.id)">Validar pago</button> }
                   </div>
                 }
               </div>

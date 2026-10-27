@@ -7,7 +7,7 @@ import { API_BASE_URL } from '../../core/api.config';
 import { AuthService } from '../../core/auth.service';
 
 type SeccionOperacion = 'caja' | 'socios' | 'cobros' | 'pases' | 'ventas' | 'stock' | 'historial';
-type MetodoOtorgamiento = 'Efectivo' | 'Transferencia' | 'Bonificada';
+type MetodoOtorgamiento = 'Efectivo' | 'Transferencia' | 'MercadoPago';
 interface CajaTurno {
   id: number;
   fecha: string;
@@ -236,8 +236,9 @@ interface PlanMembresia {
               <label>Método de cobro<select name="newMemberGrantType" [(ngModel)]="newMember.tipoOtorgamiento">
                 <option value="Efectivo">Cobrar en efectivo</option>
                 <option value="Transferencia">Transferencia (pendiente de verificación)</option>
-                <option value="Bonificada">Otorgar bonificada</option>
+                <option value="MercadoPago">Mercado Pago (débito / crédito; pendiente de verificación)</option>
               </select></label>
+              <small>Los pagos digitales se activan al verificarse y se imputan a la caja cuando se aprueban.</small>
               <button class="button button-dark" type="submit" [disabled]="busy() || !newMember.planMembresiaId">Crear socio y asignar plan</button>
             </form>
           </section>
@@ -262,8 +263,9 @@ interface PlanMembresia {
                 <label>Método de cobro<select name="assignGrantType" [(ngModel)]="membershipGrantType">
                   <option value="Efectivo">Cobrar en efectivo</option>
                   <option value="Transferencia">Transferencia (pendiente de verificación)</option>
-                  <option value="Bonificada">Otorgar bonificada</option>
+                  <option value="MercadoPago">Mercado Pago (débito / crédito; pendiente de verificación)</option>
                 </select></label>
+                <small>Los pagos digitales se activan al verificarse y se imputan a la caja cuando se aprueban.</small>
                 <button class="button button-dark" type="submit" [disabled]="busy() || !planId">Asignar membresía</button>
               </form>
             }
@@ -355,7 +357,7 @@ interface PlanMembresia {
           </form>
           <div class="table-wrap"><table class="data-table"><thead><tr><th>Producto</th><th>Sabor / categoría</th><th>Precio</th><th>Stock actual</th><th>Mínimo</th><th>Estado</th><th>Acción</th></tr></thead><tbody>
             @for (product of products(); track product.id) {
-              <tr><td>{{ product.nombre }}</td><td>{{ product.sabor || '—' }} · {{ product.categoria }}</td><td>{{ product.precio | currency:'ARS':'symbol':'1.0-2' }}</td><td>{{ product.stockActual }}</td><td>{{ product.stockMinimo }}</td><td>{{ product.stockActual <= product.stockMinimo ? 'Stock bajo' : 'Disponible' }}</td><td><button class="text-button" type="button" (click)="editProduct(product)">Editar</button><button class="text-button" type="button" (click)="adjustStock(product)">Ajustar stock</button><button class="text-button" type="button" (click)="deactivateProduct(product)">Desactivar</button></td></tr>
+              <tr><td>{{ product.nombre }}</td><td>{{ product.sabor || '—' }} · {{ product.categoria }}</td><td>{{ product.precio | currency:'ARS':'symbol':'1.0-2' }}</td><td>{{ product.stockActual }}</td><td>{{ product.stockMinimo }}</td><td>{{ product.stockActual <= product.stockMinimo ? 'Stock bajo' : 'Disponible' }}</td><td><select class="product-actions" [attr.aria-label]="'Acciones para ' + product.nombre" (change)="handleProductAction(product, $event)"><option value="">Acciones…</option><option value="edit">Editar</option><option value="stock">Ajustar stock</option><option value="delete">Eliminar</option></select></td></tr>
             } @empty { <tr><td colspan="7" class="table-empty">No hay productos cargados.</td></tr> }
           </tbody></table></div>
         </section>
@@ -628,9 +630,9 @@ export class OperacionesComponent implements OnInit {
   }
 
   deactivateProduct(product: Producto): void {
-    if (!window.confirm(`¿Desactivar ${product.nombre}? No aparecerá en el catálogo de ventas.`)) return;
+    if (!window.confirm(`¿Eliminar ${product.nombre} del inventario? Se desactivará y ya no aparecerá en ventas.`)) return;
     this.runRequest(this.http.delete(`${API_BASE_URL}/productos/${product.id}`),
-      'Producto desactivado.', () => this.loadProducts());
+      'Producto eliminado del inventario.', () => this.loadProducts());
   }
 
   adjustStock(product: Producto): void {
@@ -643,6 +645,23 @@ export class OperacionesComponent implements OnInit {
     }
     this.runRequest(this.http.put(`${API_BASE_URL}/productos/${product.id}/stock`, { stockActual: stock }),
       'Stock actualizado.', () => this.loadProducts());
+  }
+
+  handleProductAction(product: Producto, event: Event): void {
+    const select = event.target as HTMLSelectElement;
+    const action = select.value;
+    select.value = '';
+    switch (action) {
+      case 'edit':
+        this.editProduct(product);
+        break;
+      case 'stock':
+        this.adjustStock(product);
+        break;
+      case 'delete':
+        this.deactivateProduct(product);
+        break;
+    }
   }
 
   loadHistory(): void {

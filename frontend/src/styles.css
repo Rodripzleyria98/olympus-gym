@@ -124,6 +124,8 @@ textarea { resize: vertical; }
 .data-table th { padding: 13px 15px; background: #e9e9e1; color: #555750; font-size: 10px; text-transform: uppercase; letter-spacing: .6px; }
 .data-table td { padding: 15px; border-top: 1px solid #e8e8e1; vertical-align: middle; }
 .data-table td small, .history-row small { display: block; margin-top: 4px; color: var(--muted); }
+.product-actions { min-height: 34px; min-width: 128px; padding: 6px 28px 6px 10px; color: #e7f2f7; border: 1px solid rgba(0, 229, 255, .3); border-radius: 3px; background: #111b26; cursor: pointer; font-size: 11px; }
+.product-actions:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .status-badge { display: inline-block; padding: 5px 8px; border-radius: 2px; font-size: 9px; font-weight: 700; letter-spacing: .5px; white-space: nowrap; }
 .status-active { color: #24633f; background: #e1eee5; }
 .status-inactive { color: #a33631; background: #f5e5e2; }
@@ -436,6 +438,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .routine-exercise-fields input { min-height: 37px; padding: 8px; font-size: 10px; }
 .exercise-remove { width: 28px; height: 37px; padding: 0; font-size: 17px; }
 .routine-add-exercise { margin-top: 11px; padding: 6px 0; color: var(--accent); border: 0; background: transparent; cursor: pointer; font-size: 10px; font-weight: 700; }
+.routine-day-import-backdrop { z-index: 120; }
 .routine-add-exercise:hover { text-shadow: 0 0 8px rgba(0, 229, 255, .55); }
 .routine-form-empty { padding: 18px; color: #97aab5; border: 1px dashed rgba(0, 229, 255, .2); font-size: 11px; text-align: center; }
 .routine-modal-footer { position: sticky; bottom: -28px; display: flex; justify-content: flex-end; gap: 10px; margin: 18px calc(clamp(18px, 3vw, 34px) * -1) -28px; padding: 14px clamp(18px, 3vw, 34px); border-top: 1px solid var(--line); background: rgba(13, 19, 28, .97); backdrop-filter: blur(10px); }
