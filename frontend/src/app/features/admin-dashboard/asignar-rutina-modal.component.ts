@@ -80,7 +80,13 @@ interface PlantillaRutina {
           <div class="routine-days-list" formArrayName="dias">
             @for (day of dias.controls; track $index; let dayIndex = $index) {
               <section class="routine-edit-day" [formGroupName]="dayIndex">
-                <div class="routine-edit-day-heading"><span class="routine-edit-day-number">DÍA {{ (dayIndex + 1).toString().padStart(2, '0') }}</span><div><button class="text-button" type="button" [disabled]="dayIndex === 0" (click)="moveDay(dayIndex, -1)">Subir día</button><button class="text-button" type="button" [disabled]="dayIndex === dias.length - 1" (click)="moveDay(dayIndex, 1)">Bajar día</button><button class="routine-remove-button" type="button" (click)="removeDay(dayIndex)">Eliminar día</button></div></div>
+                <div class="routine-edit-day-heading">
+                  <span class="routine-edit-day-number">DÍA {{ (dayIndex + 1).toString().padStart(2, '0') }}</span>
+                  <div class="day-actions-header">
+                    <button class="btn-paste-day" type="button" (click)="openDayImport(dayIndex)">Pegar rutina de este día</button>
+                    <button class="routine-remove-button" type="button" (click)="removeDay(dayIndex)">Eliminar día</button>
+                  </div>
+                </div>
                 <div class="routine-day-fields"><label>Día<input formControlName="nombreDia" placeholder="LUNES o DÍA 1" maxlength="30" /></label><label>Enfoque / Grupo muscular<input formControlName="enfoque" placeholder="Pecho + Tríceps" maxlength="150" /></label></div>
                 <div class="routine-exercises-list" formArrayName="ejercicios">
                   @for (exercise of exercisesAt(dayIndex).controls; track $index; let exerciseIndex = $index) {
@@ -93,7 +99,6 @@ interface PlantillaRutina {
                   }
                 </div>
                 <button class="routine-add-exercise" type="button" (click)="addExercise(dayIndex)">+ Agregar Ejercicio</button>
-                <button class="routine-add-exercise" type="button" (click)="openDayImport(dayIndex)">Pegar rutina de este día</button>
               </section>
             } @empty { <p class="routine-form-empty">Agrega un día para empezar a armar la rutina.</p> }
           </div>
@@ -229,14 +234,6 @@ export class AsignarRutinaModalComponent implements OnInit {
   removeDay(index: number): void {
     this.dias.removeAt(index);
     if (this.pasteTargetDay >= this.dias.length) this.pasteTargetDay = Math.max(0, this.dias.length - 1);
-  }
-
-  moveDay(index: number, offset: -1 | 1): void {
-    const targetIndex = index + offset;
-    if (targetIndex < 0 || targetIndex >= this.dias.length) return;
-    const day = this.dias.at(index);
-    this.dias.removeAt(index);
-    this.dias.insert(targetIndex, day);
   }
 
   addExercise(dayIndex: number): void {

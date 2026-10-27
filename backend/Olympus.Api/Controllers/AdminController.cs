@@ -18,7 +18,6 @@ public class AdminController(
     OlympusDbContext dbContext) : ControllerBase
 {
     [HttpPost("membresias/asignar")]
-    [Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult<SocioConMembresiaAdminResponseDto>> AsignarMembresia(
         AsignarMembresiaAdminRequestDto request,
         CancellationToken cancellationToken)
@@ -41,7 +40,6 @@ public class AdminController(
     }
 
     [HttpPost("usuarios/crear-con-membresia")]
-    [Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult<SocioConMembresiaAdminResponseDto>> CrearSocioConMembresia(
         RegistrarSocioConMembresiaRequestDto request,
         CancellationToken cancellationToken)
@@ -146,7 +144,7 @@ public class AdminController(
     public async Task<IActionResult> ValidarPagoPendiente(Guid pagoId, CancellationToken cancellationToken)
     {
         if (!await usuarioService.ValidarPagoPendienteAsync(pagoId, cancellationToken))
-            return Conflict(new { message = "El pago ya fue procesado o no es una transferencia o pago de Mercado Pago pendiente de validar." });
+            return Conflict(new { message = "El pago ya fue procesado o no es una transferencia pendiente de validar." });
         return NoContent();
     }
 
@@ -237,7 +235,7 @@ public class AdminController(
             PlanMembresiaId = plan.Id,
             FechaInicio = inicio,
             FechaFin = inicio.AddDays(plan.DuracionDias),
-            Estado = tipoOtorgamiento == "Efectivo" ? EstadoMembresia.Vigente : EstadoMembresia.Pendiente
+            Estado = EstadoMembresia.Vigente
         };
         dbContext.MembresiasUsuario.Add(membresia);
 
@@ -251,10 +249,10 @@ public class AdminController(
                 CajaTurnoId = caja!.Id,
                 Monto = plan.Precio,
                 FechaCreacion = ahora,
-                FechaAcreditacion = tipoOtorgamiento == "Efectivo" ? ahora : null,
+                FechaAcreditacion = ahora,
                 MetodoPago = tipoOtorgamiento,
                 PeriodoMeses = Math.Max(1, (int)Math.Round(plan.DuracionDias / 30.0, MidpointRounding.AwayFromZero)),
-                EstadoPago = tipoOtorgamiento == "Efectivo" ? EstadoPago.Aprobado : EstadoPago.Pendiente
+                EstadoPago = EstadoPago.Aprobado
             });
         }
 

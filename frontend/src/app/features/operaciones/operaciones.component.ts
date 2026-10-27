@@ -125,9 +125,11 @@ interface PlanMembresia {
       <nav class="toolbar" aria-label="Secciones de operaciones">
         @if (auth.isAdmin()) {
           <button class="button button-small" [class.button-accent]="activeSection() === 'caja'" type="button" (click)="setSection('caja')">Caja</button>
-          <button class="button button-small" [class.button-accent]="activeSection() === 'socios'" type="button" (click)="setSection('socios')">Socios y membresías</button>
           <button class="button button-small" [class.button-accent]="activeSection() === 'historial'" type="button" (click)="setSection('historial')">Historial de caja</button>
           <button class="button button-small" [class.button-accent]="activeSection() === 'stock'" type="button" (click)="setSection('stock')">Inventario</button>
+        }
+        @if (auth.isAdmin() || auth.isProfesor()) {
+          <button class="button button-small" [class.button-accent]="activeSection() === 'socios'" type="button" (click)="setSection('socios')">Socios y membresías</button>
         }
         <button class="button button-small" [class.button-accent]="activeSection() === 'cobros'" type="button" (click)="setSection('cobros')">Cobrar membresía</button>
         <button class="button button-small" [class.button-accent]="activeSection() === 'pases'" type="button" (click)="setSection('pases')">Pases diarios</button>
@@ -216,7 +218,7 @@ interface PlanMembresia {
         </section>
       }
 
-      @if (activeSection() === 'socios' && auth.isAdmin()) {
+      @if (activeSection() === 'socios' && (auth.isAdmin() || auth.isProfesor())) {
         <div class="profile-grid">
           <section class="history-panel">
             <span class="eyebrow">ALTA ADMINISTRATIVA</span><h2>Registrar socio con membresía</h2>
@@ -235,10 +237,9 @@ interface PlanMembresia {
               <label>Fecha de inicio<input type="date" name="newMemberStartDate" [(ngModel)]="newMember.fechaInicio" required /></label>
               <label>Método de cobro<select name="newMemberGrantType" [(ngModel)]="newMember.tipoOtorgamiento">
                 <option value="Efectivo">Cobrar en efectivo</option>
-                <option value="Transferencia">Transferencia (pendiente de verificación)</option>
-                <option value="MercadoPago">Mercado Pago (débito / crédito; pendiente de verificación)</option>
+                <option value="Transferencia">Transferencia</option>
+                <option value="MercadoPago">Mercado Pago (Débito / Crédito)</option>
               </select></label>
-              <small>Los pagos digitales se activan al verificarse y se imputan a la caja cuando se aprueban.</small>
               <button class="button button-dark" type="submit" [disabled]="busy() || !newMember.planMembresiaId">Crear socio y asignar plan</button>
             </form>
           </section>
@@ -262,10 +263,9 @@ interface PlanMembresia {
                 <label>Fecha de inicio (opcional; por defecto continúa la vigencia actual)<input type="date" name="assignMembershipStartDate" [(ngModel)]="membershipStartDate" /></label>
                 <label>Método de cobro<select name="assignGrantType" [(ngModel)]="membershipGrantType">
                   <option value="Efectivo">Cobrar en efectivo</option>
-                  <option value="Transferencia">Transferencia (pendiente de verificación)</option>
-                  <option value="MercadoPago">Mercado Pago (débito / crédito; pendiente de verificación)</option>
+                  <option value="Transferencia">Transferencia</option>
+                  <option value="MercadoPago">Mercado Pago (Débito / Crédito)</option>
                 </select></label>
-                <small>Los pagos digitales se activan al verificarse y se imputan a la caja cuando se aprueban.</small>
                 <button class="button button-dark" type="submit" [disabled]="busy() || !planId">Asignar membresía</button>
               </form>
             }
