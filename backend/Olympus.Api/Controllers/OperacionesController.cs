@@ -120,13 +120,22 @@ public class CajaController(OlympusDbContext dbContext) : ControllerBase
 
     [HttpGet("historial")]
     public async Task<ActionResult<IReadOnlyList<CajaTurnoDto>>> Historial(
-        [FromQuery] DateTime? desde,
-        [FromQuery] DateTime? hasta,
+        [FromQuery] DateOnly? desde,
+        [FromQuery] DateOnly? hasta,
         CancellationToken cancellationToken)
     {
-        var query = dbContext.CajasTurno.AsNoTracking().Where(caja => caja.Estado == "Cerrada");
-        if (desde.HasValue) query = query.Where(caja => caja.Fecha >= desde.Value.Date);
-        if (hasta.HasValue) query = query.Where(caja => caja.Fecha < hasta.Value.Date.AddDays(1));
+        var query = dbContext.CajasTurno.AsNoTracking()
+            .Where(caja => caja.Estado == "Cerrada" || caja.Estado == "Abierta");
+        if (desde.HasValue)
+        {
+            var inicio = CajaTurnoHelper.FechaComercialAUtc(desde.Value);
+            query = query.Where(caja => caja.Fecha >= inicio);
+        }
+        if (hasta.HasValue)
+        {
+            var diaSiguiente = CajaTurnoHelper.FechaComercialAUtc(hasta.Value.AddDays(1));
+            query = query.Where(caja => caja.Fecha < diaSiguiente);
+        }
         var cajas = await query.OrderByDescending(caja => caja.Fecha).ThenByDescending(caja => caja.Id)
             .Select(caja => new CajaTurnoDto(
                 caja.Id, caja.Fecha, caja.Turno, caja.ResponsableTurno, caja.UsuarioAperturaId, caja.UsuarioCierreId,
@@ -426,15 +435,15 @@ public class PasesDiariosController(OlympusDbContext dbContext) : ControllerBase
         CancellationToken cancellationToken)
     {
         var dni = request.Dni.Trim();
-        var hoy = DateTime.UtcNow.Date;
+        var hoy = CajaTurnoHelper.TurnoActual().Fecha;
         if (await dbContext.PasesDiarios.AnyAsync(pase => pase.Dni == dni && pase.Fecha == hoy, cancellationToken))
             return Conflict(new { message = "Ya existe un pase diario para este DNI en el día de hoy." });
 
         var caja = await dbContext.CajasTurno.OrderByDescending(item => item.FechaHoraApertura.HasValue)
             .ThenByDescending(item => item.FechaHoraApertura).ThenByDescending(item => item.Id)
             .FirstOrDefaultAsync(item => item.Estado == "Abierta", cancellationToken);
-        if (string.Equals(request.MetodoPago, "Efectivo", StringComparison.OrdinalIgnoreCase) && caja is null)
-            return Conflict(new { message = "Debe haber una caja abierta para cobrar en efectivo." });
+        if (caja is null)
+            return Conflict(new { message = "Debe haber una caja abierta para registrar el pase diario en el turno." });
 
         var pase = new PaseDiario
         {
@@ -463,7 +472,7 @@ public class SociosController(OlympusDbContext dbContext) : ControllerBase
     public async Task<ActionResult<bool>> VerificarAcceso(string dni, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(dni) || dni.Length > 20) return Ok(false);
-        var hoy = DateTime.UtcNow.Date;
+        var hoy = CajaTurnoHelper.TurnoActual().Fecha;
         var ahora = DateTime.UtcNow;
         var membresiaActiva = await dbContext.Usuarios.AsNoTracking()
             .Where(usuario => usuario.Dni == dni &&

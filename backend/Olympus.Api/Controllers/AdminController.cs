@@ -144,7 +144,7 @@ public class AdminController(
     public async Task<IActionResult> ValidarPagoPendiente(Guid pagoId, CancellationToken cancellationToken)
     {
         if (!await usuarioService.ValidarPagoPendienteAsync(pagoId, cancellationToken))
-            return Conflict(new { message = "El pago ya fue procesado o no es una transferencia pendiente de validar." });
+            return Conflict(new { message = "El pago ya fue procesado, no es una transferencia pendiente o debe abrir una caja para validar el cobro." });
         return NoContent();
     }
 

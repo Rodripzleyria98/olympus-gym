@@ -164,6 +164,8 @@ public class UsuarioService(OlympusDbContext dbContext) : IUsuarioService
                 .ThenByDescending(caja => caja.FechaHoraApertura).ThenByDescending(caja => caja.Id)
                 .Select(caja => (int?)caja.Id)
                 .FirstOrDefaultAsync(cancellationToken);
+            if (pago.CajaTurnoId is null)
+                return false;
         }
 
         pago.EstadoPago = EstadoPago.Aprobado;

@@ -1,8 +1,9 @@
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Observable } from 'rxjs';
+import { interval, Observable } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { API_BASE_URL } from '../../core/api.config';
 import { AuthService } from '../../core/auth.service';
 
@@ -144,7 +145,7 @@ interface PlanMembresia {
           <div class="heading-split">
             <div>
               <span class="eyebrow">CAJA DEL TURNO</span>
-              <h2>{{ cajaActual()?.turno ?? 'Turno actual' }} · {{ cajaActual()?.fecha | date:'d MMM y' }}</h2>
+              <h2>{{ cajaActual()?.turno ?? 'Turno actual' }} · {{ cajaActual()?.fecha | date:'d MMM y':'UTC' }}</h2>
             </div>
             <span class="status-badge" [class.status-active]="cajaActual()?.detalle" [class.status-inactive]="!cajaActual()?.detalle">
               {{ cajaActual()?.detalle ? 'ABIERTA' : 'CERRADA' }}
@@ -366,22 +367,36 @@ interface PlanMembresia {
       @if (activeSection() === 'historial' && auth.isAdmin()) {
         <section class="history-panel">
           <div class="heading-split">
-            <div><span class="eyebrow">TURNOS CERRADOS</span><h2>Historial de caja</h2></div>
+            <div><span class="eyebrow">TURNOS Y MOVIMIENTOS</span><h2>Historial de caja</h2><p class="muted">El turno abierto se actualiza automáticamente cada 15 segundos.</p></div>
             <div class="form-row"><label>Desde<input type="date" name="historyFrom" [(ngModel)]="historyFrom" /></label><label>Hasta<input type="date" name="historyTo" [(ngModel)]="historyTo" /></label><button class="button button-quiet" type="button" (click)="loadHistory()">Filtrar</button></div>
           </div>
-          <div class="table-wrap"><table class="data-table"><thead><tr><th>Turno</th><th>Responsable</th><th>Apertura</th><th>Cierre</th><th>Monto inicial</th><th>Detalle</th></tr></thead><tbody>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>Turno</th><th>Estado</th><th>Responsable</th><th>Apertura</th><th>Cierre</th><th>Monto inicial</th><th>Detalle</th></tr></thead><tbody>
             @for (item of history(); track item.id) {
-              <tr><td>{{ item.turno }} · {{ item.fecha | date:'d MMM y' }}</td><td>{{ item.responsableTurno }}</td><td>{{ item.fechaHoraApertura | date:'short' }}</td><td>{{ item.fechaHoraCierre | date:'short' }}</td><td>{{ item.montoInicial | currency:'ARS':'symbol':'1.0-2' }}</td><td><button class="text-button" type="button" (click)="viewHistoryDetail(item)">Ver movimientos</button></td></tr>
-            } @empty { <tr><td colspan="6" class="table-empty">No hay turnos cerrados en el período seleccionado.</td></tr> }
+              <tr><td>{{ item.turno }} · {{ item.fecha | date:'d MMM y':'UTC' }}</td><td><span class="status-badge" [class.status-active]="item.estado === 'Abierta'" [class.status-inactive]="item.estado !== 'Abierta'">{{ item.estado }}</span></td><td>{{ item.responsableTurno }}</td><td>{{ item.fechaHoraApertura | date:'short' }}</td><td>{{ item.fechaHoraCierre | date:'short' }}</td><td>{{ item.montoInicial | currency:'ARS':'symbol':'1.0-2' }}</td><td><button class="text-button" type="button" (click)="viewHistoryDetail(item)">Ver movimientos</button></td></tr>
+            } @empty { <tr><td colspan="7" class="table-empty">No hay turnos en el período seleccionado.</td></tr> }
           </tbody></table></div>
           @if (historyDetail(); as detail) {
-            <h3>{{ detail.caja.fecha | date:'d MMM y' }} · Turno {{ detail.caja.turno }} · {{ detail.caja.responsableTurno }}</h3>
+            <h3>{{ detail.caja.fecha | date:'d MMM y':'UTC' }} · Turno {{ detail.caja.turno }} · {{ detail.caja.responsableTurno }} · {{ detail.caja.estado }}</h3>
+            <h4>Totales de este turno</h4>
+            <p class="muted">Los pagos pendientes se muestran en movimientos, pero no se suman a los ingresos confirmados.</p>
             <div class="profile-grid">
-              <div class="detail-line"><span>Efectivo del día</span><strong>{{ detail.totalesDia.efectivo | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
-              <div class="detail-line"><span>Transferencias del día</span><strong>{{ detail.totalesDia.transferencias | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
-              <div class="detail-line"><span>Otros medios del día</span><strong>{{ detail.totalesDia.otros | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
-              <div class="detail-line"><span>Total acumulado del día</span><strong>{{ detail.totalesDia.total | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+              <div class="detail-line"><span>Efectivo</span><strong>{{ detail.totalesTurno.efectivo | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+              <div class="detail-line"><span>Transferencias</span><strong>{{ detail.totalesTurno.transferencias | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+              <div class="detail-line"><span>Otros medios</span><strong>{{ detail.totalesTurno.otros | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+              <div class="detail-line"><span>Total del turno</span><strong>{{ detail.totalesTurno.total | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
             </div>
+            <h4>Acumulado de todos los turnos del día</h4>
+            <div class="profile-grid">
+              <div class="detail-line"><span>Efectivo</span><strong>{{ detail.totalesDia.efectivo | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+              <div class="detail-line"><span>Transferencias</span><strong>{{ detail.totalesDia.transferencias | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+              <div class="detail-line"><span>Otros medios</span><strong>{{ detail.totalesDia.otros | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+              <div class="detail-line"><span>Total del día</span><strong>{{ detail.totalesDia.total | currency:'ARS':'symbol':'1.0-2' }}</strong></div>
+            </div>
+            <h4>Cobros de membresía</h4>
+            <div class="table-wrap"><table class="data-table"><thead><tr><th>Socio</th><th>Plan</th><th>Fecha</th><th>Monto</th><th>Método</th><th>Estado</th></tr></thead><tbody>
+              @for (payment of detail.cobrosMembresia; track payment.id) { <tr><td>{{ payment.socio }}</td><td>{{ payment.plan }}</td><td>{{ payment.fecha | date:'short' }}</td><td>{{ payment.monto | currency:'ARS':'symbol':'1.0-2' }}</td><td>{{ payment.metodoPago }}</td><td>{{ payment.estadoPago }}</td></tr> }
+              @empty { <tr><td colspan="6" class="table-empty">No hubo cobros de membresía en este turno.</td></tr> }
+            </tbody></table></div>
             <h4>Ventas</h4>
             <div class="table-wrap"><table class="data-table"><thead><tr><th>Fecha</th><th>Detalle</th><th>Pago</th><th>Total</th></tr></thead><tbody>
               @for (sale of detail.ventas; track sale.id) { <tr><td>{{ sale.fecha | date:'short' }}</td><td>@for (item of sale.items; track $index) { <span>{{ item.cantidad }} × {{ item.producto }}@if (!$last) {, }</span> }</td><td>{{ sale.metodoPago }}</td><td>{{ sale.montoTotal | currency:'ARS':'symbol':'1.0-2' }}</td></tr> }
@@ -400,6 +415,7 @@ interface PlanMembresia {
 })
 export class OperacionesComponent implements OnInit {
   private readonly http = inject(HttpClient);
+  private readonly destroyRef = inject(DestroyRef);
   readonly auth = inject(AuthService);
   readonly activeSection = signal<SeccionOperacion>('pases');
   readonly cajaActual = signal<CajaActual | null>(null);
@@ -426,6 +442,7 @@ export class OperacionesComponent implements OnInit {
   planId: number | null = null;
   historyFrom = '';
   historyTo = '';
+  private selectedHistoryCajaId: number | null = null;
   productId: number | null = null;
   saleQuantity = 1;
   saleMethod = 'Efectivo';
@@ -457,6 +474,13 @@ export class OperacionesComponent implements OnInit {
       error: error => this.setError(error),
     });
     if (this.auth.isAdmin()) this.loadHistory();
+    interval(15_000).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      if (this.auth.isAdmin() && this.activeSection() === 'caja') this.loadCaja();
+      if (this.auth.isAdmin() && this.activeSection() === 'historial') {
+        this.loadHistory();
+        if (this.selectedHistoryCajaId !== null) this.refreshHistoryDetail(this.selectedHistoryCajaId);
+      }
+    });
   }
 
   setSection(section: SeccionOperacion): void {
@@ -669,14 +693,23 @@ export class OperacionesComponent implements OnInit {
     if (this.historyFrom) params = params.set('desde', this.historyFrom);
     if (this.historyTo) params = params.set('hasta', this.historyTo);
     this.http.get<CajaTurno[]>(`${API_BASE_URL}/caja/historial`, { params }).subscribe({
-      next: value => this.history.set(value),
+      next: value => {
+        this.history.set(value);
+        const openShift = value.find(item => item.estado === 'Abierta');
+        if (openShift && this.selectedHistoryCajaId === null) this.viewHistoryDetail(openShift);
+      },
       error: error => this.setError(error),
     });
   }
 
   viewHistoryDetail(caja: CajaTurno): void {
+    this.selectedHistoryCajaId = caja.id;
     this.historyDetail.set(null);
-    this.http.get<CajaDetalle>(`${API_BASE_URL}/caja/${caja.id}/detalle`).subscribe({
+    this.refreshHistoryDetail(caja.id);
+  }
+
+  private refreshHistoryDetail(cajaId: number): void {
+    this.http.get<CajaDetalle>(`${API_BASE_URL}/caja/${cajaId}/detalle`).subscribe({
       next: detail => this.historyDetail.set(detail),
       error: error => this.setError(error),
     });
